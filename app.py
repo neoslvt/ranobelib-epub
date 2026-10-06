@@ -64,6 +64,13 @@ def fnum(x):
         return 0.0
 
 
+def chapter_file(volume, number, part=0):
+    vol = str(volume).replace(".", "-")
+    num = str(number).replace(".", "-")
+    base = f"v{vol}_c{num}"
+    return f"{base}.xhtml" if not part else f"{base}_p{part}.xhtml"
+
+
 def pm_html(n, att):
     """Convert the site's JSON document format (used by newer chapters) into plain HTML."""
     if isinstance(n, str):
@@ -178,19 +185,18 @@ def build(jid, d):
                 continue
             sub = f"<br/>{html.escape(name)}" if name else ""
             head = f'<h2 class="ch">Глава {num}{sub}</h2>'
-            tag = f"v{v}_c{str(num).replace('.', '_')}"
             ch_title = f"Глава {num}" + (f": {name}" if name else "")
             parts = re.split(r"<!--IMG:(.*?)-->", tidy(content, book, n))  # text, image, text, image, ...
             first = None
             for i, part in enumerate(parts):
                 if i % 2:  # every illustration gets its own file, so it is always alone on its page
-                    pg = epub.EpubHtml(title="Иллюстрация", file_name=f"{tag}_{i}.xhtml", lang='ru')
+                    pg = epub.EpubHtml(title="Иллюстрация", file_name=chapter_file(v, num, i), lang='ru')
                     pg.content = f'<div class="pic"><img src="{part}" alt=""/></div>'
                 else:
                     frag = BeautifulSoup(part, 'html.parser')
                     if i and not frag.get_text(strip=True):
                         continue
-                    pg = epub.EpubHtml(title=ch_title, file_name=f"{tag}_{i}.xhtml" if i else f"{tag}.xhtml", lang='ru')
+                    pg = epub.EpubHtml(title=ch_title, file_name=chapter_file(v, num, i), lang='ru')
                     pg.content = (head if not i else "") + f'<div class="txt">{frag}</div>'
                 pg.add_item(css)
                 book.add_item(pg)
