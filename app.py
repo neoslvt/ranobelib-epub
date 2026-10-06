@@ -64,6 +64,30 @@ def fnum(x):
         return 0.0
 
 
+def pm_html(n, att):
+    """Convert the site's JSON document format (used by newer chapters) into plain HTML."""
+    if isinstance(n, str):
+        return html.escape(n)
+    t, kids = n.get("type"), "".join(pm_html(c, att) for c in n.get("content") or [])
+    if t == "text":
+        out = html.escape(n.get("text", ""))
+        for m in n.get("marks") or []:
+            tag = {"bold": "strong", "italic": "em", "strike": "s", "underline": "u"}.get(m.get("type"))
+            if tag:
+                out = f"<{tag}>{out}</{tag}>"
+        return out
+    if t == "image":
+        imgs = (n.get("attrs") or {}).get("images") or []
+        return "".join(f'<img src="{att[str(i.get("image"))]}"/>' for i in imgs if att.get(str(i.get("image"))))
+    if t == "hardBreak":
+        return "<br/>"
+    if t == "horizontalRule":
+        return "<p>***</p>"
+    tags = {"paragraph": "p", "blockquote": "blockquote", "bulletList": "ul", "orderedList": "ol",
+            "listItem": "li", "heading": "h3"}
+    return f"<{tags[t]}>{kids}</{tags[t]}>" if t in tags else kids
+
+
 def tidy(raw, book, n):
     """Strip site styling, embed images on their own pages, normalise scene breaks."""
     soup = BeautifulSoup(raw, 'html.parser')
@@ -127,7 +151,6 @@ def build(jid, d):
             <p>Downloaded from the ranobelib.me using <a href="https://github.com/neoslvt/ranobelib-epub">ranobelib-epub by Neoslvt</a></p>
             <p>Translated by {html.escape(d["team"])}</p>
         </div>'''
-
         tp.add_item(css)
         book.add_item(tp)
 
@@ -138,14 +161,23 @@ def build(jid, d):
             if not bs:
                 continue
             b = next((b for b in bs if b.get("branch_id") == bid), bs[0])
-            j["msg"] = f"глава {num}"
+            j["msg"] = f"Том {v}, глава {num}"
             r = get(f"{API}/{slug}/chapter", params={'volume': v, 'number': num, 'branch_id': b.get("branch_id")})
-            content = (r.json().get("data") or {}).get("content") if r else None
+            data = (r.json().get("data") or {}) if r else {}
+            content = data.get("content")
+            if isinstance(content, dict):  # newer chapters come as a JSON document, not HTML
+                att = {}
+                for a in data.get("attachments") or []:
+                    u = str(a.get("url") or "")
+                    u = "https://ranobelib.me" + u if u.startswith("/") else u
+                    for k in ("name", "filename", "id"):
+                        att[str(a.get(k))] = u
+                content = pm_html(content, att)
             j["done"] += 1
             if not content:
                 continue
             sub = f"<br/>{html.escape(name)}" if name else ""
-            head = f'<h2 class="ch">Глава {num}{sub}</h2>'
+            head = f'<h2 class="ch"><small>Том {v}</small>Глава {num}{sub}</h2>'
             tag = f"v{v}_c{str(num).replace('.', '_')}"
             ch_title = f"Глава {num}" + (f": {name}" if name else "")
             parts = re.split(r"<!--IMG:(.*?)-->", tidy(content, book, n))  # text, image, text, image, ...
