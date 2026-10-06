@@ -148,7 +148,7 @@ def build(jid, d):
         tp = epub.EpubHtml(title="Обложка", file_name="title.xhtml", lang='ru')
         tp.content = f'''<div class="cover">{cover}
             <h1>{html.escape(title)}</h1>
-            <p>Downloaded from the ranobelib.me using <a href="https://github.com/neoslvt/ranobelib-epub">ranobelib-epub by Neoslvt</a></p>
+            <p><a href="https://github.com/neoslvt/ranobelib-epub">ranobelib-epub by Neoslvt</a></p>
             <p>Translated by {html.escape(d["team"])}</p>
         </div>'''
         tp.add_item(css)
@@ -177,7 +177,7 @@ def build(jid, d):
             if not content:
                 continue
             sub = f"<br/>{html.escape(name)}" if name else ""
-            head = f'<h2 class="ch"><small>Том {v}</small>Глава {num}{sub}</h2>'
+            head = f'<h2 class="ch">Глава {num}{sub}</h2>'
             tag = f"v{v}_c{str(num).replace('.', '_')}"
             ch_title = f"Глава {num}" + (f": {name}" if name else "")
             parts = re.split(r"<!--IMG:(.*?)-->", tidy(content, book, n))  # text, image, text, image, ...
@@ -227,7 +227,9 @@ def info():
     if not chs:
         return jsonify(error="Couldn't find chapters. Check the link and try again."), 404
     CACHE[slug] = chs
-    m = get(f"{API}/{slug}")
+    m = get(f"{API}/{slug}", params={"fields[]": [
+        "eng_name", "otherNames", "summary", "releaseDate", "views", "rate_avg", "rate",
+        "genres", "tags", "authors", "artists", "format"]})
     meta = (m.json().get("data") or {}) if m else {}
     vols, branches = {}, {}
     for c in chs:
@@ -238,12 +240,49 @@ def info():
                 "id": b.get("branch_id"), "chapters": 0,
                 "name": ", ".join(t.get("name", "") for t in b.get("teams", []) if t.get("name")) or f"Branch {b.get('branch_id')}"})
             e["chapters"] += 1
+    names = lambda L: [p.get("rus_name") or p.get("name") for p in L or [] if p.get("rus_name") or p.get("name")]
+    rt = meta.get("rating") or {}
+    facts = [[k, v] for k, v in [
+        ("Year", meta.get("releaseDateString") or meta.get("releaseDate")),
+        ("Status", (meta.get("status") or {}).get("label")),
+        ("Translation", (meta.get("scanlateStatus") or {}).get("label")),
+        ("Age", (meta.get("ageRestriction") or {}).get("label")),
+        ("Rating", f"{rt['averageFormated']} ({rt.get('votesFormated', 0)} votes)" if rt.get("averageFormated") else None),
+        ("Views", (meta.get("views") or {}).get("formated")),
+        ("Origin", (meta.get("type") or {}).get("label")),
+        ("Format", ", ".join(f.get("name", "") for f in meta.get("format") or [])),
+    ] if v]
     return jsonify(
+        alt=meta.get("eng_name") or meta.get("name") or "", other=meta.get("otherNames") or [],
+        summary=pm_html(meta["summary"], {}) if meta.get("summary") else "",
+        genres=names(meta.get("genres")), tags=names(meta.get("tags")),
+        authors=names(meta.get("authors")), artists=names(meta.get("artists")),
+        notes=[c.get("label") for c in meta.get("content_marking") or [] if c.get("label")], facts=facts,
         slug=slug, chapters=len(chs),
         title=meta.get("rus_name") or meta.get("name") or meta.get("eng_name") or slug.split("--")[-1].replace("-", " ").title(),
         cover=(meta.get("cover") or {}).get("default", ""),
         volumes=[{"v": v, "n": n} for v, n in sorted(vols.items(), key=lambda x: fnum(x[0]))],
         branches=list(branches.values()))
+
+
+@app.get("/api/search")
+def search_books():
+    q = request.args.get("q", "").strip()
+    r = get(API, params={"q": q, "site_id[]": 3, "fields[]": ["rate_avg", "releaseDate"]}) if q else None
+    if not r:
+        return jsonify(error="Search failed. Check your connection and try again."), 502
+    out = []
+    for m in r.json().get("data", []):
+        out.append(dict(
+            slug=m.get("slug_url") or m.get("slug"),
+            title=m.get("rus_name") or m.get("name") or m.get("eng_name") or "",
+            alt=m.get("eng_name") or m.get("name") or "",
+            cover=(m.get("cover") or {}).get("thumbnail", ""),
+            type=(m.get("type") or {}).get("label", ""),
+            year=m.get("releaseDateString") or m.get("releaseDate") or "",
+            rating=(m.get("rating") or {}).get("averageFormated", ""),
+            status=(m.get("status") or {}).get("label", "")))
+    return jsonify(out)
 
 
 @app.post("/api/start")

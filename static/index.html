@@ -6,294 +6,250 @@
     <title>REPUBer ( Ranobe to EPUB )</title>
     <style>
       :root {
-        --ink: #1b1f24;
-        --mute: #5d6670;
-        --line: #e3e6ea;
-        --soft: #f5f6f8;
-        --ac: #1f4fd8;
-        --ac2: #173fb0;
+        --ink: #1a1d23;
+        --mute: #6b7280;
+        --line: #e8eaee;
+        --bd: #d5d9df;
+        --soft: #f6f7f9;
+        --ac: #2554d9;
+        --ac2: #1c44b8;
         --err: #b42318;
+        --r: 8px;
       }
-      * {
-        box-sizing: border-box;
-      }
+      * { box-sizing: border-box; }
       body {
         margin: 0;
         background: #fff;
         color: var(--ink);
-        font:
-          15px/1.55 system-ui,
-          -apple-system,
-          "Segoe UI",
-          Roboto,
-          sans-serif;
+        font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
       }
       .top {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: #fff;
         border-bottom: 1px solid var(--line);
       }
-      .top div {
-        max-width: 920px;
+      .nav {
+        max-width: 860px;
         margin: 0 auto;
-        padding: 0 1.5rem;
-        height: 56px;
+        padding: 0 1.25rem;
+        height: 52px;
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        gap: 1rem;
       }
       .brand {
-        font:
-          600 1.05rem Georgia,
-          "Iowan Old Style",
-          serif;
-        cursor: pointer;
-      }
-      main {
-        max-width: 920px;
-        margin: 0 auto;
-        padding: 3rem 1.5rem 4rem;
-      }
-      h1,
-      h2 {
-        font-family: Georgia, "Iowan Old Style", serif;
-        font-weight: 600;
-        letter-spacing: -0.01em;
-        margin: 0;
-      }
-      h1 {
-        font-size: 2.3rem;
-        line-height: 1.15;
-        margin-bottom: 0.6rem;
-      }
-      h2 {
-        font-size: 1.7rem;
-        line-height: 1.2;
-      }
-      h3 {
-        font-size: 0.95rem;
-        margin: 1.8rem 0 0.6rem;
-      }
-      .lead {
-        color: var(--mute);
-        max-width: 520px;
-        margin: 0 0 1.6rem;
-      }
-      .mute {
-        color: var(--mute);
-      }
-      .small {
-        font-size: 0.88rem;
-      }
-      button {
-        font: inherit;
-        cursor: pointer;
-        color: inherit;
-      }
-      input,
-      select {
-        font: inherit;
-        color: inherit;
-        background: #fff;
-        border: 1px solid #c9ced4;
-        border-radius: 6px;
-        padding: 0.65rem 0.8rem;
-        min-width: 0;
-      }
-      input:focus,
-      select:focus,
-      button:focus-visible {
-        outline: 2px solid var(--ac);
-        outline-offset: 1px;
-        border-color: var(--ac);
-      }
-      .btn {
-        background: var(--ac);
-        color: #fff;
-        border: 0;
-        border-radius: 6px;
-        padding: 0.65rem 1.2rem;
-        font-weight: 600;
-      }
-      .btn:hover {
-        background: var(--ac2);
-      }
-      .btn:disabled {
-        background: #b8c3e6;
-        cursor: default;
-      }
-      .link {
         background: none;
         border: 0;
         padding: 0;
-        color: var(--ac);
+        font-weight: 650;
+        font-size: 15px;
+        letter-spacing: -0.01em;
       }
-      .link:hover {
-        text-decoration: underline;
+      .find { flex: 1; display: flex; gap: 0.5rem; min-width: 0; }
+      .find input { flex: 1; background: var(--soft); border-color: transparent; }
+      .find input:focus { background: #fff; }
+      main { max-width: 860px; margin: 0 auto; padding: 1.75rem 1.25rem 3rem; }
+      h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+      h1 { font-size: 1.3rem; line-height: 1.25; margin-bottom: 0.35rem; }
+      h2 { font-size: 1.25rem; line-height: 1.25; }
+      h3 { font-size: 0.86rem; margin: 1.3rem 0 0.45rem; }
+      .lead { color: var(--mute); max-width: 520px; margin: 0; }
+      .mute { color: var(--mute); }
+      .small { font-size: 0.86rem; }
+      button { font: inherit; cursor: pointer; color: inherit; }
+      input, select {
+        font: inherit;
+        color: inherit;
+        height: 36px;
+        background: #fff;
+        border: 1px solid var(--bd);
+        border-radius: var(--r);
+        padding: 0 0.75rem;
+        min-width: 0;
       }
-      .find {
-        display: flex;
-        gap: 0.6rem;
-        max-width: 620px;
+      input:focus, select:focus {
+        outline: 0;
+        border-color: var(--ac);
+        box-shadow: 0 0 0 3px rgba(37, 84, 217, 0.15);
       }
-      .find input {
-        flex: 1;
-        padding: 0.8rem 1rem;
+      button:focus-visible { outline: 2px solid var(--ac); outline-offset: 2px; }
+      .btn {
+        height: 36px;
+        padding: 0 1rem;
+        background: var(--ac);
+        color: #fff;
+        border: 0;
+        border-radius: var(--r);
+        font-weight: 500;
+        white-space: nowrap;
       }
-      .err {
-        color: var(--err);
-        margin: 0.7rem 0 0;
-      }
+      .btn:hover { background: var(--ac2); }
+      .btn:disabled { background: #b8c3e6; cursor: default; }
+      .link { background: none; border: 0; padding: 0; color: var(--ac); }
+      .link:hover { text-decoration: underline; }
+      .err { color: var(--err); margin: 0 0 1rem; }
       .libh {
-        margin-top: 3.5rem;
-        padding-bottom: 0.6rem;
+        margin-top: 2rem;
+        padding-bottom: 0.5rem;
         border-bottom: 1px solid var(--line);
         display: flex;
         justify-content: space-between;
         align-items: baseline;
       }
-      .libh b {
-        font-size: 1rem;
-      }
+      .libh b { font-size: 0.86rem; }
       .row {
         display: flex;
         justify-content: space-between;
         gap: 1rem;
-        padding: 0.8rem 0;
+        padding: 0.65rem 0;
         border-bottom: 1px solid var(--line);
         color: inherit;
         text-decoration: none;
       }
-      .row:hover span:first-child {
-        color: var(--ac);
+      .row:hover span:first-child { color: var(--ac); }
+      .empty { padding: 1rem 0; color: var(--mute); }
+      .sec {
+        font-size: 0.95rem;
+        margin: 1.8rem 0 0.5rem;
+        padding-top: 1.2rem;
+        border-top: 1px solid var(--line);
       }
-      .empty {
-        padding: 1.2rem 0;
-        color: var(--mute);
+      .tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.7rem 0; }
+      .tags span {
+        background: var(--soft);
+        color: #3f4652;
+        border-radius: 999px;
+        padding: 0.05rem 0.6rem;
+        font-size: 0.8rem;
       }
-      .back {
-        margin-bottom: 1.6rem;
-      }
-      .book {
+      .facts {
         display: grid;
-        grid-template-columns: 170px 1fr;
-        gap: 2.2rem;
+        grid-template-columns: max-content 1fr;
+        gap: 0.15rem 1rem;
+        margin: 0.6rem 0 0;
+        font-size: 0.86rem;
       }
+      .facts dt { color: var(--mute); }
+      .facts dd { margin: 0; }
+      .desc { max-width: 640px; max-height: 7.5em; overflow: hidden; }
+      .desc.open { max-height: none; }
+      .desc p { margin: 0 0 0.7em; }
+      details { margin-top: 0.8rem; }
+      summary { cursor: pointer; }
+      .res { margin-top: 1.5rem; }
+      .res .libh { margin-top: 0; }
+      .res.busy { opacity: 0.5; pointer-events: none; }
+      .hit {
+        display: flex;
+        gap: 0.8rem;
+        width: 100%;
+        text-align: left;
+        background: none;
+        border: 0;
+        border-bottom: 1px solid var(--line);
+        padding: 0.65rem 0;
+      }
+      .hit:hover b { color: var(--ac); }
+      .hit i {
+        flex: none;
+        width: 40px;
+        aspect-ratio: 2/3;
+        background: var(--soft) center/cover;
+        border-radius: 3px;
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+      }
+      .hit b { display: block; font-weight: 600; }
+      .back { margin-bottom: 1.2rem; }
+      .book { display: grid; grid-template-columns: 130px 1fr; gap: 1.5rem; }
       .cv {
         aspect-ratio: 2/3;
         background: var(--soft) center/cover;
-        border: 1px solid var(--line);
-        border-radius: 2px 6px 6px 2px;
-        box-shadow: -3px 0 0 rgba(0, 0, 0, 0.06);
+        border-radius: 4px;
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
       }
       select {
+        appearance: none;
         width: 100%;
-        max-width: 460px;
+        max-width: 420px;
+        padding-right: 2rem;
+        background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%236b7280' stroke-width='1.6'%3E%3Cpath d='m2 4 4 4 4-4'/%3E%3C/svg%3E") no-repeat right 0.75rem center;
       }
-      .tiles {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-        gap: 0.5rem;
-      }
+      .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 0.4rem; }
       .tile {
         text-align: left;
         background: #fff;
-        border: 1px solid #c9ced4;
-        border-radius: 6px;
-        padding: 0.55rem 0.7rem;
+        border: 1px solid var(--bd);
+        border-radius: var(--r);
+        padding: 0.45rem 0.65rem;
         line-height: 1.3;
       }
-      .tile small {
-        display: block;
-        color: var(--mute);
-      }
+      .tile small { display: block; color: var(--mute); font-size: 0.78rem; }
       .tile[aria-pressed="true"] {
         border-color: var(--ac);
-        background: #eef2fd;
+        background: #f0f4ff;
         box-shadow: inset 0 0 0 1px var(--ac);
       }
       .act {
         display: flex;
         align-items: center;
         gap: 1rem;
-        margin-top: 2rem;
-        padding-top: 1.2rem;
+        margin-top: 1.6rem;
+        padding-top: 1rem;
         border-top: 1px solid var(--line);
       }
-      .prog {
-        max-width: 560px;
-        margin: 4vh auto 0;
-      }
-      .bar {
-        height: 8px;
-        background: var(--soft);
-        border-radius: 4px;
-        overflow: hidden;
-        margin: 1.6rem 0 0.6rem;
-      }
-      .bar i {
-        display: block;
-        height: 100%;
-        width: 0;
-        background: var(--ac);
-        transition: width 0.4s;
-      }
-      .stat {
-        display: flex;
-        justify-content: space-between;
-      }
+      .prog { max-width: 480px; margin: 2rem auto 0; }
+      .bar { height: 6px; background: var(--soft); border-radius: 999px; overflow: hidden; margin: 1.2rem 0 0.5rem; }
+      .bar i { display: block; height: 100%; width: 0; background: var(--ac); transition: width 0.4s; }
+      .stat { display: flex; justify-content: space-between; }
       .toast {
         position: fixed;
         left: 50%;
-        bottom: 1.6rem;
+        bottom: 1.4rem;
         transform: translateX(-50%);
         background: var(--ink);
         color: #fff;
-        padding: 0.7rem 1.1rem;
-        border-radius: 6px;
+        padding: 0.6rem 1rem;
+        border-radius: var(--r);
         max-width: 90vw;
       }
       @media (max-width: 600px) {
-        .book {
-          grid-template-columns: 1fr;
-        }
-        .cv {
-          width: 130px;
-        }
-        h1 {
-          font-size: 1.8rem;
-        }
-        .find {
-          flex-direction: column;
-        }
+        .nav { gap: 0.6rem; }
+        .book { grid-template-columns: 1fr; }
+        .cv { width: 110px; }
       }
-      [hidden] {
-        display: none !important;
-      }
+      @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+      [hidden] { display: none !important; }
     </style>
   </head>
   <body>
-    <div class="top">
-      <div>
-        <span class="brand" id="brand">REPUBer</span
-        ><button class="link mute small" id="quit">Quit</button>
+    <header class="top">
+      <div class="nav">
+        <button class="brand" id="brand">REPUBer</button>
+        <form class="find" id="sf" role="search">
+          <input
+            id="q"
+            type="search"
+            placeholder="Search by title or paste a link"
+            aria-label="Title, link or slug"
+            autocomplete="off"
+            autofocus
+          />
+          <button class="btn" id="find" type="submit">Search</button>
+        </form>
       </div>
-    </div>
+    </header>
     <main>
+      <p class="err" id="e1" hidden></p>
       <section data-view="home">
         <h1>Save a book for offline reading</h1>
         <p class="lead">
-          Paste a link from ranobelib, choose a translation and the volumes you
-          want, and get an EPUB for any e-reader.
+          Search for a title or paste a ranobelib link above, pick a translation
+          and volumes, and get an EPUB for any e-reader.
         </p>
-        <div class="find">
-          <input
-            id="q"
-            placeholder="https://ranobelib.me/ru/book/…"
-            aria-label="Book link or slug"
-            autofocus
-          />
-          <button class="btn" id="find">Find book</button>
-        </div>
-        <p class="err" id="e1" hidden></p>
+        <div class="res" id="res" hidden></div>
         <div class="libh">
           <b>Your books</b
           ><span class="mute small">Saved on this computer</span>
@@ -307,22 +263,36 @@
           <div class="cv" id="cv"></div>
           <div>
             <h2 id="t"></h2>
-            <div class="mute" id="meta"></div>
-            <h3>Translation</h3>
-            <select id="br" aria-label="Translation"></select>
-            <h3>
-              Volumes
-              <span class="small"
-                ><button class="link" id="all">Select all</button> &middot;
-                <button class="link" id="none">Clear</button></span
-              >
-            </h3>
-            <div class="tiles" id="vols"></div>
-            <div class="act">
-              <button class="btn" id="dl">Build EPUB</button
-              ><span class="mute" id="sum"></span>
-            </div>
+            <div class="mute" id="alt"></div>
+            <div id="by" style="margin-top: 0.5rem"></div>
+            <div class="tags" id="gen"></div>
+            <dl class="facts" id="facts"></dl>
           </div>
+        </div>
+
+        <h3 class="sec">About</h3>
+        <div class="desc" id="desc"></div>
+        <button class="link small" id="more" hidden>Read more</button>
+        <details id="tg">
+          <summary class="mute small"></summary>
+          <div class="mute small" id="tgl" style="margin-top: 0.4rem"></div>
+        </details>
+        <p class="mute small" id="notes" hidden></p>
+
+        <h3 class="sec">Download</h3>
+        <h3 style="margin-top: 0">Translation</h3>
+        <select id="br" aria-label="Translation"></select>
+        <h3>
+          Volumes
+          <span class="small"
+            ><button class="link" id="all">Select all</button> &middot;
+            <button class="link" id="none">Clear</button></span
+          >
+        </h3>
+        <div class="tiles" id="vols"></div>
+        <div class="act">
+          <button class="btn" id="dl">Build EPUB</button
+          ><span class="mute" id="sum"></span>
         </div>
       </section>
 
@@ -363,6 +333,8 @@
           .querySelectorAll("[data-view]")
           .forEach((e) => (e.hidden = e.dataset.view !== v));
         scrollTo(0, 0);
+        $("#e1").hidden = true;
+        $("#q").disabled = $("#find").disabled = v === "prog";
         if (v === "home") lib();
       }
       function toast(m) {
@@ -382,12 +354,21 @@
           : '<div class="empty">Books you build will appear here.</div>';
       }
 
-      async function find() {
-        const q = $("#q").value.trim();
-        if (!q) return;
+      function fit() {
+        const e = $("#desc");
+        e.classList.remove("open");
+        $("#more").textContent = "Read more";
+        $("#more").hidden = e.scrollHeight <= e.clientHeight + 2;
+      }
+      const busy = (on) => {
+        $("#find").disabled = on;
+        $("#find").textContent = on ? "Searching…" : "Search";
+      };
+
+      async function openBook(q) {
         $("#e1").hidden = true;
-        $("#find").disabled = true;
-        $("#find").textContent = "Searching…";
+        $("#res").classList.add("busy");
+        busy(true);
         try {
           const r = await fetch("/api/info?q=" + encodeURIComponent(q)),
             d = await r.json();
@@ -396,8 +377,35 @@
           sel = new Set(d.volumes.map((v) => v.v));
           $("#t").textContent = d.title;
           $("#cv").style.backgroundImage = d.cover ? `url("${d.cover}")` : "";
-          $("#meta").textContent =
-            `${d.chapters} chapters in ${d.volumes.length} volume${d.volumes.length > 1 ? "s" : ""}`;
+          $("#alt").textContent = [d.alt, ...d.other]
+            .filter((x) => x && x !== d.title)
+            .join(" · ");
+          $("#by").innerHTML = [
+            d.authors.length && `<b>${esc(d.authors.join(", "))}</b>`,
+            d.artists.length &&
+              `<span class="mute">Art: ${esc(d.artists.join(", "))}</span>`,
+          ]
+            .filter(Boolean)
+            .join(" &middot; ");
+          $("#gen").innerHTML = d.genres
+            .map((g) => `<span>${esc(g)}</span>`)
+            .join("");
+          $("#facts").innerHTML = [
+            ...d.facts,
+            [
+              "Chapters",
+              `${d.chapters} in ${d.volumes.length} volume${d.volumes.length > 1 ? "s" : ""}`,
+            ],
+          ]
+            .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`)
+            .join("");
+          $("#desc").innerHTML =
+            d.summary || '<p class="mute">No description available.</p>';
+          $("#tg").hidden = !d.tags.length;
+          $("#tg summary").textContent = `Tags (${d.tags.length})`;
+          $("#tgl").textContent = d.tags.join(", ");
+          $("#notes").hidden = !d.notes.length;
+          $("#notes").textContent = "Content notes: " + d.notes.join("; ");
           $("#br").innerHTML = d.branches
             .map(
               (b) =>
@@ -406,13 +414,59 @@
             .join("");
           tiles();
           go("book");
+          fit();
         } catch (e) {
           $("#e1").textContent =
             e.message || "Something went wrong. Try again.";
           $("#e1").hidden = false;
         }
-        $("#find").disabled = false;
-        $("#find").textContent = "Find book";
+        $("#res").classList.remove("busy");
+        busy(false);
+      }
+
+      async function search(q) {
+        $("#e1").hidden = true;
+        busy(true);
+        try {
+          const r = await fetch("/api/search?q=" + encodeURIComponent(q)),
+            d = await r.json();
+          if (!r.ok) throw new Error(d.error);
+          const box = $("#res");
+          box.hidden = false;
+          box.innerHTML =
+            `<div class="libh"><b>${d.length ? "Results for" : "Nothing found for"} “${esc(q)}”</b><button class="link small" id="clr">Clear</button></div>` +
+            (d.length
+              ? d
+                  .map(
+                    (h, i) =>
+                      `<button class="hit" data-i="${i}"><i style="background-image:url('${esc(h.cover)}')"></i><span><b>${esc(h.title)}</b>` +
+                      (h.alt && h.alt !== h.title
+                        ? `<span class="mute small">${esc(h.alt)}</span><br>`
+                        : "") +
+                      `<span class="mute small">${[h.type, h.year, h.rating && "★ " + h.rating, h.status].filter(Boolean).map(esc).join(" · ")}</span></span></button>`,
+                  )
+                  .join("")
+              : '<div class="empty">Try another title, or paste a link.</div>');
+          box
+            .querySelectorAll(".hit")
+            .forEach((b) => (b.onclick = () => openBook(d[b.dataset.i].slug)));
+          $("#clr").onclick = () => {
+            box.hidden = true;
+          };
+        } catch (e) {
+          $("#e1").textContent =
+            e.message || "Something went wrong. Try again.";
+          $("#e1").hidden = false;
+        }
+        busy(false);
+      }
+
+      function submit() {
+        const q = $("#q").value.trim();
+        if (!q) return;
+        if (/\d+--[\w-]+|^https?:\/\//.test(q)) return openBook(q);
+        if ($("[data-view=home]").hidden) go("home");
+        search(q);
       }
 
       function tiles() {
@@ -494,15 +548,16 @@
           a.click();
           a.remove();
           setTimeout(() => {
+            $("#res").hidden = true;
             go("home");
             toast(`“${T.title}” was saved to your library.`);
           }, 1800);
         }, 700);
       }
 
-      $("#find").onclick = find;
-      $("#q").onkeydown = (e) => {
-        if (e.key === "Enter") find();
+      $("#sf").onsubmit = (e) => {
+        e.preventDefault();
+        submit();
       };
       $("#back").onclick =
         $("#pback").onclick =
@@ -517,11 +572,15 @@
         tiles();
       };
       $("#dl").onclick = build;
-      $("#quit").onclick = async () => {
-        await fetch("/api/quit", { method: "POST" });
-        document.body.innerHTML =
-          '<main><h1>Sayonara!</h1></main>';
+      $("#more").onclick = () => {
+        const o = $("#desc").classList.toggle("open");
+        $("#more").textContent = o ? "Show less" : "Read more";
       };
+//      $("#quit").onclick = async () => {
+//        await fetch("/api/quit", { method: "POST" });
+//        document.body.innerHTML =
+//          '<main><h1>Sayonara!</h1></main>';
+      //};
       lib();
     </script>
   </body>
