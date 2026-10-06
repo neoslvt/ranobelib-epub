@@ -22,7 +22,7 @@
 Нужен Python 3.9 или новее.
 
 ```bash
-git clone https://github.com/<ваш-аккаунт>/ranobelib-epub.git
+git clone https://github.com/neoslvt/ranobelib-epub.git
 cd ranobelib-epub
 pip install -r requirements.txt
 python app.py
