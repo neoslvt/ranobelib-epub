@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>REPUBer ( Ranobe to EPUB )</title>
+    <style>
+      :root {
+        --ink: #1b1f24;
+        --mute: #5d6670;
+        --line: #e3e6ea;
+        --soft: #f5f6f8;
+        --ac: #1f4fd8;
+        --ac2: #173fb0;
+        --err: #b42318;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #fff;
+        color: var(--ink);
+        font:
+          15px/1.55 system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+      }
+      .top {
+        border-bottom: 1px solid var(--line);
+      }
+      .top div {
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 0 1.5rem;
+        height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .brand {
+        font:
+          600 1.05rem Georgia,
+          "Iowan Old Style",
+          serif;
+        cursor: pointer;
+      }
+      main {
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 3rem 1.5rem 4rem;
+      }
+      h1,
+      h2 {
+        font-family: Georgia, "Iowan Old Style", serif;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        margin: 0;
+      }
+      h1 {
+        font-size: 2.3rem;
+        line-height: 1.15;
+        margin-bottom: 0.6rem;
+      }
+      h2 {
+        font-size: 1.7rem;
+        line-height: 1.2;
+      }
+      h3 {
+        font-size: 0.95rem;
+        margin: 1.8rem 0 0.6rem;
+      }
+      .lead {
+        color: var(--mute);
+        max-width: 520px;
+        margin: 0 0 1.6rem;
+      }
+      .mute {
+        color: var(--mute);
+      }
+      .small {
+        font-size: 0.88rem;
+      }
+      button {
+        font: inherit;
+        cursor: pointer;
+        color: inherit;
+      }
+      input,
+      select {
+        font: inherit;
+        color: inherit;
+        background: #fff;
+        border: 1px solid #c9ced4;
+        border-radius: 6px;
+        padding: 0.65rem 0.8rem;
+        min-width: 0;
+      }
+      input:focus,
+      select:focus,
+      button:focus-visible {
+        outline: 2px solid var(--ac);
+        outline-offset: 1px;
+        border-color: var(--ac);
+      }
+      .btn {
+        background: var(--ac);
+        color: #fff;
+        border: 0;
+        border-radius: 6px;
+        padding: 0.65rem 1.2rem;
+        font-weight: 600;
+      }
+      .btn:hover {
+        background: var(--ac2);
+      }
+      .btn:disabled {
+        background: #b8c3e6;
+        cursor: default;
+      }
+      .link {
+        background: none;
+        border: 0;
+        padding: 0;
+        color: var(--ac);
+      }
+      .link:hover {
+        text-decoration: underline;
+      }
+      .find {
+        display: flex;
+        gap: 0.6rem;
+        max-width: 620px;
+      }
+      .find input {
+        flex: 1;
+        padding: 0.8rem 1rem;
+      }
+      .err {
+        color: var(--err);
+        margin: 0.7rem 0 0;
+      }
+      .libh {
+        margin-top: 3.5rem;
+        padding-bottom: 0.6rem;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+      }
+      .libh b {
+        font-size: 1rem;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.8rem 0;
+        border-bottom: 1px solid var(--line);
+        color: inherit;
+        text-decoration: none;
+      }
+      .row:hover span:first-child {
+        color: var(--ac);
+      }
+      .empty {
+        padding: 1.2rem 0;
+        color: var(--mute);
+      }
+      .back {
+        margin-bottom: 1.6rem;
+      }
+      .book {
+        display: grid;
+        grid-template-columns: 170px 1fr;
+        gap: 2.2rem;
+      }
+      .cv {
+        aspect-ratio: 2/3;
+        background: var(--soft) center/cover;
+        border: 1px solid var(--line);
+        border-radius: 2px 6px 6px 2px;
+        box-shadow: -3px 0 0 rgba(0, 0, 0, 0.06);
+      }
+      select {
+        width: 100%;
+        max-width: 460px;
+      }
+      .tiles {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 0.5rem;
+      }
+      .tile {
+        text-align: left;
+        background: #fff;
+        border: 1px solid #c9ced4;
+        border-radius: 6px;
+        padding: 0.55rem 0.7rem;
+        line-height: 1.3;
+      }
+      .tile small {
+        display: block;
+        color: var(--mute);
+      }
+      .tile[aria-pressed="true"] {
+        border-color: var(--ac);
+        background: #eef2fd;
+        box-shadow: inset 0 0 0 1px var(--ac);
+      }
+      .act {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-top: 2rem;
+        padding-top: 1.2rem;
+        border-top: 1px solid var(--line);
+      }
+      .prog {
+        max-width: 560px;
+        margin: 4vh auto 0;
+      }
+      .bar {
+        height: 8px;
+        background: var(--soft);
+        border-radius: 4px;
+        overflow: hidden;
+        margin: 1.6rem 0 0.6rem;
+      }
+      .bar i {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: var(--ac);
+        transition: width 0.4s;
+      }
+      .stat {
+        display: flex;
+        justify-content: space-between;
+      }
+      .toast {
+        position: fixed;
+        left: 50%;
+        bottom: 1.6rem;
+        transform: translateX(-50%);
+        background: var(--ink);
+        color: #fff;
+        padding: 0.7rem 1.1rem;
+        border-radius: 6px;
+        max-width: 90vw;
+      }
+      @media (max-width: 600px) {
+        .book {
+          grid-template-columns: 1fr;
+        }
+        .cv {
+          width: 130px;
+        }
+        h1 {
+          font-size: 1.8rem;
+        }
+        .find {
+          flex-direction: column;
+        }
+      }
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="top">
+      <div>
+        <span class="brand" id="brand">REPUBer</span
+        ><button class="link mute small" id="quit">Quit</button>
+      </div>
+    </div>
+    <main>
+      <section data-view="home">
+        <h1>Save a book for offline reading</h1>
+        <p class="lead">
+          Paste a link from ranobelib, choose a translation and the volumes you
+          want, and get an EPUB for any e-reader.
+        </p>
+        <div class="find">
+          <input
+            id="q"
+            placeholder="https://ranobelib.me/ru/book/…"
+            aria-label="Book link or slug"
+            autofocus
+          />
+          <button class="btn" id="find">Find book</button>
+        </div>
+        <p class="err" id="e1" hidden></p>
+        <div class="libh">
+          <b>Your books</b
+          ><span class="mute small">Saved on this computer</span>
+        </div>
+        <div id="lib"></div>
+      </section>
+
+      <section data-view="book" hidden>
+        <button class="link back" id="back">&larr; Back to search</button>
+        <div class="book">
+          <div class="cv" id="cv"></div>
+          <div>
+            <h2 id="t"></h2>
+            <div class="mute" id="meta"></div>
+            <h3>Translation</h3>
+            <select id="br" aria-label="Translation"></select>
+            <h3>
+              Volumes
+              <span class="small"
+                ><button class="link" id="all">Select all</button> &middot;
+                <button class="link" id="none">Clear</button></span
+              >
+            </h3>
+            <div class="tiles" id="vols"></div>
+            <div class="act">
+              <button class="btn" id="dl">Build EPUB</button
+              ><span class="mute" id="sum"></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section data-view="prog" hidden>
+        <div class="prog">
+          <h2 id="pt"></h2>
+          <p class="mute" id="ps">
+            Downloading chapters and packing them into an EPUB. Keep this window
+            open.
+          </p>
+          <div class="bar"><i id="pb"></i></div>
+          <div class="stat">
+            <span id="pm">Starting…</span><b id="pp">0%</b>
+          </div>
+          <div class="mute small" id="pc"></div>
+          <p class="err" id="e2" hidden></p>
+          <button class="btn" id="pback" style="margin-top: 1.4rem" hidden>
+            Back to start
+          </button>
+        </div>
+      </section>
+    </main>
+    <div class="toast" id="toast" hidden></div>
+
+    <script>
+      const $ = (s) => document.querySelector(s),
+        esc = (s) =>
+          String(s).replace(
+            /[&<>"]/g,
+            (c) =>
+              ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
+          );
+      let T = null,
+        sel = new Set();
+
+      function go(v) {
+        document
+          .querySelectorAll("[data-view]")
+          .forEach((e) => (e.hidden = e.dataset.view !== v));
+        scrollTo(0, 0);
+        if (v === "home") lib();
+      }
+      function toast(m) {
+        const t = $("#toast");
+        t.textContent = m;
+        t.hidden = false;
+        setTimeout(() => (t.hidden = true), 4500);
+      }
+
+      async function lib() {
+        const L = await (await fetch("/api/library")).json();
+        $("#lib").innerHTML = L.length
+          ? L.map(
+              (f) =>
+                `<a class="row" href="/api/file/${encodeURIComponent(f.name)}" download><span>${esc(f.name.replace(/\.epub$/, ""))}</span><span class="mute small">${f.mb} MB &middot; Save a copy</span></a>`,
+            ).join("")
+          : '<div class="empty">Books you build will appear here.</div>';
+      }
+
+      async function find() {
+        const q = $("#q").value.trim();
+        if (!q) return;
+        $("#e1").hidden = true;
+        $("#find").disabled = true;
+        $("#find").textContent = "Searching…";
+        try {
+          const r = await fetch("/api/info?q=" + encodeURIComponent(q)),
+            d = await r.json();
+          if (!r.ok) throw new Error(d.error);
+          T = d;
+          sel = new Set(d.volumes.map((v) => v.v));
+          $("#t").textContent = d.title;
+          $("#cv").style.backgroundImage = d.cover ? `url("${d.cover}")` : "";
+          $("#meta").textContent =
+            `${d.chapters} chapters in ${d.volumes.length} volume${d.volumes.length > 1 ? "s" : ""}`;
+          $("#br").innerHTML = d.branches
+            .map(
+              (b) =>
+                `<option value="${b.id}">${esc(b.name)} (${b.chapters} chapters)</option>`,
+            )
+            .join("");
+          tiles();
+          go("book");
+        } catch (e) {
+          $("#e1").textContent =
+            e.message || "Something went wrong. Try again.";
+          $("#e1").hidden = false;
+        }
+        $("#find").disabled = false;
+        $("#find").textContent = "Find book";
+      }
+
+      function tiles() {
+        const all = sel.size === T.volumes.length,
+          box = $("#vols");
+        box.innerHTML = "";
+        T.volumes.forEach((v) => {
+          const b = document.createElement("button");
+          b.className = "tile";
+          b.setAttribute("aria-pressed", sel.has(v.v));
+          b.innerHTML = `Volume ${esc(v.v)}<small>${v.n} chapters</small>`;
+          b.onclick = () => {
+            if (all) sel = new Set([v.v]);
+            else if (sel.has(v.v)) sel.delete(v.v);
+            else sel.add(v.v);
+            tiles();
+          };
+          box.append(b);
+        });
+        const n = T.volumes
+          .filter((v) => sel.has(v.v))
+          .reduce((a, v) => a + v.n, 0);
+        $("#sum").textContent = sel.size
+          ? `${sel.size} volume${sel.size > 1 ? "s" : ""}, ${n} chapters`
+          : "Select at least one volume";
+        $("#dl").disabled = !sel.size;
+      }
+
+      async function build() {
+        $("#pt").textContent = T.title;
+        $("#pb").style.width = "0";
+        $("#pp").textContent = "0%";
+        $("#pm").textContent = "Starting…";
+        $("#pc").textContent = "";
+        $("#e2").hidden = true;
+        $("#pback").hidden = true;
+        go("prog");
+        const r = await fetch("/api/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slug: T.slug,
+            title: T.title,
+            cover: T.cover,
+            branch: $("#br").value,
+            team: $("#br").selectedOptions[0].text.replace(
+              / \(\d+ chapters\)$/,
+              "",
+            ),
+            volumes: [...sel],
+          }),
+        });
+        const { id } = await r.json();
+        const tick = setInterval(async () => {
+          const p = await (await fetch("/api/progress/" + id)).json(),
+            pct = p.total ? Math.round((p.done / p.total) * 100) : 0;
+          $("#pb").style.width = pct + "%";
+          $("#pp").textContent = pct + "%";
+          $("#pm").textContent =
+            p.state === "done" ? "Saving your book…" : p.msg;
+          $("#pc").textContent = p.total
+            ? `${p.done} of ${p.total} chapters`
+            : "";
+          if (p.state === "running") return;
+          clearInterval(tick);
+          if (p.state === "error") {
+            $("#pm").textContent = "Build stopped";
+            $("#e2").textContent = p.msg;
+            $("#e2").hidden = false;
+            $("#pback").hidden = false;
+            return;
+          }
+          $("#pb").style.width = "100%";
+          $("#pp").textContent = "100%";
+          const a = document.createElement("a");
+          a.href = "/api/file/" + encodeURIComponent(p.file);
+          a.download = p.file;
+          document.body.append(a);
+          a.click();
+          a.remove();
+          setTimeout(() => {
+            go("home");
+            toast(`“${T.title}” was saved to your library.`);
+          }, 1800);
+        }, 700);
+      }
+
+      $("#find").onclick = find;
+      $("#q").onkeydown = (e) => {
+        if (e.key === "Enter") find();
+      };
+      $("#back").onclick =
+        $("#pback").onclick =
+        $("#brand").onclick =
+          () => go("home");
+      $("#all").onclick = () => {
+        sel = new Set(T.volumes.map((v) => v.v));
+        tiles();
+      };
+      $("#none").onclick = () => {
+        sel = new Set();
+        tiles();
+      };
+      $("#dl").onclick = build;
+      $("#quit").onclick = async () => {
+        await fetch("/api/quit", { method: "POST" });
+        document.body.innerHTML =
+          '<main><h1>Sayonara!</h1></main>';
+      };
+      lib();
+    </script>
+  </body>
+</html>

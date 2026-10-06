@@ -1,0 +1,7 @@
+flask
+requests
+beautifulsoup4
+ebooklib
+pywebview[qt]; sys_platform == "linux"
+pywebview; sys_platform != "linux"
+pyinstaller
