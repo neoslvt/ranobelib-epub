@@ -51,6 +51,18 @@
       .find { flex: 1; display: flex; gap: 0.5rem; min-width: 0; }
       .find input { flex: 1; background: var(--soft); border-color: transparent; }
       .find input:focus { background: #fff; }
+      .src { color: var(--mute); font-size: 0.8rem; flex: none; }
+      .nav select {
+        width: 9.5rem;
+        max-width: 34vw;
+        min-width: 7.5rem;
+        flex: none;
+        padding-right: 1.6rem;
+        color: var(--ink);
+        background-color: var(--soft);
+        border-color: transparent;
+      }
+      .nav select option { color: #1a1d23; background: #fff; }
       main { max-width: 860px; margin: 0 auto; padding: 1.75rem 1.25rem 3rem; }
       h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
       h1 { font-size: 1.3rem; line-height: 1.25; margin-bottom: 0.35rem; }
@@ -228,6 +240,7 @@
     <header class="top">
       <div class="nav">
         <button class="brand" id="brand">REPUBer</button>
+        <select id="core" aria-label="Source" title="Source"><!--CORES--></select>
         <form class="find" id="sf" role="search">
           <input
             id="q"
@@ -246,8 +259,8 @@
       <section data-view="home">
         <h1>Save a book for offline reading</h1>
         <p class="lead">
-          Search for a title or paste a ranobelib link above, pick a translation
-          and volumes, and get an EPUB for any e-reader.
+          Choose a source, search for a title or paste a link, then pick a
+          translation and volumes. The book is saved as an EPUB.
         </p>
         <div class="res" id="res" hidden></div>
         <div class="libh">
@@ -257,7 +270,7 @@
         <div id="lib"></div>
       </section>
 
-      <section data-view="book" hidden>
+      <section data-view="book" style="margin-top: -1rem" hidden>
         <button class="link back" id="back">&larr; Back to search</button>
         <div class="book">
           <div class="cv" id="cv"></div>
@@ -328,13 +341,40 @@
       let T = null,
         sel = new Set();
 
+      function savedCore() {
+        try {
+          return localStorage.getItem("core") || "";
+        } catch (e) {
+          return "";
+        }
+      }
+      function current() {
+        const opt = $("#core").selectedOptions[0];
+        if (!opt || !opt.value) return null;
+        return {
+          id: opt.value,
+          name: opt.textContent,
+          link: opt.getAttribute("data-link") || "",
+          placeholder: opt.getAttribute("data-placeholder") || "",
+        };
+      }
+      function isDirect(q) {
+        const link = current()?.link;
+        if (!link) return /^https?:\/\//.test(q);
+        try {
+          return new RegExp(link).test(q);
+        } catch (e) {
+          return /^https?:\/\//.test(q);
+        }
+      }
+
       function go(v) {
         document
           .querySelectorAll("[data-view]")
           .forEach((e) => (e.hidden = e.dataset.view !== v));
         scrollTo(0, 0);
         $("#e1").hidden = true;
-        $("#q").disabled = $("#find").disabled = v === "prog";
+        $("#q").disabled = $("#find").disabled = $("#core").disabled = v === "prog";
         if (v === "home") lib();
       }
       function toast(m) {
@@ -365,15 +405,27 @@
         $("#find").textContent = on ? "Searching…" : "Search";
       };
 
-      async function openBook(q) {
+      async function openBook(q, core) {
         $("#e1").hidden = true;
         $("#res").classList.add("busy");
         busy(true);
+        core = core || current()?.id || "";
         try {
-          const r = await fetch("/api/info?q=" + encodeURIComponent(q)),
+          const params = new URLSearchParams({ q, core });
+          const r = await fetch("/api/info?" + params),
             d = await r.json();
           if (!r.ok) throw new Error(d.error);
+          d.authors = d.authors || [];
+          d.artists = d.artists || [];
+          d.genres = d.genres || [];
+          d.tags = d.tags || [];
+          d.notes = d.notes || [];
+          d.facts = d.facts || [];
+          d.other = d.other || [];
+          d.volumes = d.volumes || [];
+          d.branches = d.branches || [];
           T = d;
+          T.core = d.core || core || "";
           sel = new Set(d.volumes.map((v) => v.v));
           $("#t").textContent = d.title;
           $("#cv").style.backgroundImage = d.cover ? `url("${d.cover}")` : "";
@@ -409,7 +461,7 @@
           $("#br").innerHTML = d.branches
             .map(
               (b) =>
-                `<option value="${b.id}">${esc(b.name)} (${b.chapters} chapters)</option>`,
+                `<option value="${b.id == null ? "" : b.id}">${esc(b.name)} (${b.chapters} chapters)</option>`,
             )
             .join("");
           tiles();
@@ -428,9 +480,19 @@
         $("#e1").hidden = true;
         busy(true);
         try {
-          const r = await fetch("/api/search?q=" + encodeURIComponent(q)),
+          const id = current()?.id || "",
+            r = await fetch(
+              "/api/search?core=" +
+                encodeURIComponent(id) +
+                "&q=" +
+                encodeURIComponent(q),
+            ),
             d = await r.json();
           if (!r.ok) throw new Error(d.error);
+          if ((current()?.id || "") !== id) {
+            busy(false);
+            return;
+          }
           const box = $("#res");
           box.hidden = false;
           box.innerHTML =
@@ -449,7 +511,11 @@
               : '<div class="empty">Try another title, or paste a link.</div>');
           box
             .querySelectorAll(".hit")
-            .forEach((b) => (b.onclick = () => openBook(d[b.dataset.i].slug)));
+            .forEach(
+              (b) =>
+                (b.onclick = () =>
+                  openBook(d[b.dataset.i].slug, d[b.dataset.i].core)),
+            );
           $("#clr").onclick = () => {
             box.hidden = true;
           };
@@ -464,7 +530,7 @@
       function submit() {
         const q = $("#q").value.trim();
         if (!q) return;
-        if (/\d+--[\w-]+|^https?:\/\//.test(q)) return openBook(q);
+        if (isDirect(q)) return openBook(q, current()?.id);
         if ($("[data-view=home]").hidden) go("home");
         search(q);
       }
@@ -508,11 +574,12 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            core: T.core,
             slug: T.slug,
             title: T.title,
             cover: T.cover,
-            branch: $("#br").value,
-            team: $("#br").selectedOptions[0].text.replace(
+            branch: $("#br").value === "" ? null : $("#br").value,
+            team: ($("#br").selectedOptions[0]?.text || "").replace(
               / \(\d+ chapters\)$/,
               "",
             ),
@@ -555,6 +622,43 @@
         }, 700);
       }
 
+      function applyCore() {
+        const c = current();
+        try {
+          if (c) localStorage.setItem("core", c.id);
+        } catch (e) {}
+        $("#q").placeholder = (c && c.placeholder) || "Search by title or paste a link";
+      }
+      async function loadCores() {
+        const keep = $("#core").value || savedCore();
+        try {
+          const r = await fetch("/api/cores"),
+            list = await r.json();
+          if (!Array.isArray(list) || !list.length) throw new Error("empty");
+          const sel = $("#core");
+          while (sel.options.length) sel.remove(0);
+          list.forEach((c) => {
+            const opt = new Option(c.name || c.id, c.id);
+            opt.setAttribute("data-link", c.link || "");
+            opt.setAttribute("data-placeholder", c.placeholder || "");
+            if (c.description) opt.title = c.description;
+            sel.add(opt);
+          });
+          if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
+          else sel.selectedIndex = 0;
+        } catch (e) {
+          if (!$("#core").options.length) {
+            $("#e1").textContent = "No sources found. Add a core in the cores folder.";
+            $("#e1").hidden = false;
+          }
+        }
+        applyCore();
+      }
+      $("#core").onchange = () => {
+        applyCore();
+        $("#res").hidden = true;
+      };
+
       $("#sf").onsubmit = (e) => {
         e.preventDefault();
         submit();
@@ -581,7 +685,11 @@
 //        document.body.innerHTML =
 //          '<main><h1>Sayonara!</h1></main>';
       //};
-      lib();
+      if (savedCore() && [...$("#core").options].some((o) => o.value === savedCore()))
+        $("#core").value = savedCore();
+      if (!$("#core").value && $("#core").options.length) $("#core").selectedIndex = 0;
+      applyCore();
+      loadCores().finally(lib);
     </script>
   </body>
 </html>

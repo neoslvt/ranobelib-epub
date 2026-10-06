@@ -1,301 +1,102 @@
-import html, os, re, socket, sys, threading, time, uuid, webbrowser
+import html
+import os
+import socket
+import sys
+import threading
+import uuid
+import webbrowser
 from pathlib import Path
-import requests
-from bs4 import BeautifulSoup, Comment
-from ebooklib import epub
+
 from flask import Flask, jsonify, request, send_file, send_from_directory
+
+import cores
+from cores.base import CoreError
 
 BASE = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
 OUT = Path.home() / "RanobeLibrary"
 OUT.mkdir(exist_ok=True)
-API = "https://api.cdnlibs.org/api/manga"
-
-s = requests.Session()
-s.headers.update({
-    'Referer': 'https://ranobelib.me/', 'Site-Id': '3',
-    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36',
-    'Client-Time-Zone': 'Asia/Almaty',
-})
 # index.html can sit in ./static/ or right next to app.py
 STATIC = next((p for p in (BASE / "static", BASE) if (p / "index.html").exists()), BASE)
 app = Flask(__name__, static_folder=None)
-CACHE, JOBS = {}, {}
-
-# Relative units, no forced colours or fonts: readers keep their own theme, font and night mode.
-CSS = """
-body{margin:0;padding:0 .4em;line-height:1.6;hyphens:auto;-webkit-hyphens:auto;orphans:2;widows:2}
-.cover{text-align:center;padding-top:10%;page-break-after:always}
-.cover img{max-width:78%;max-height:68vh;box-shadow:0 .3em 1em rgba(0,0,0,.4)}
-.cover h1{font-size:1.7em;line-height:1.2;margin:1.1em 0 .3em}
-.cover p{margin:0;text-indent:0;opacity:.6}
-h2.ch{text-align:center;font-size:1.5em;line-height:1.25;margin:3em 0 1.8em;page-break-after:avoid}
-h2.ch small{display:block;font-size:.55em;font-weight:normal;letter-spacing:.15em;opacity:.6;margin-bottom:.7em}
-h2.ch:after{content:"";display:block;width:3em;margin:1em auto 0;border-top:1px solid;opacity:.4}
-.txt p{margin:0;text-align:justify;text-indent:1.4em}
-.txt>p:first-child,.txt p.scene+p{text-indent:0}
-.txt p.scene{text-align:center;text-indent:0;margin:1.6em 0;letter-spacing:.5em;opacity:.55}
-.txt blockquote{margin:1em 1.6em;font-style:italic;opacity:.9}
-.txt h1,.txt h2,.txt h3{text-align:center;margin:1.6em 0 .8em;page-break-after:avoid}
-.pic{text-align:center;margin:0;padding:0}
-.pic img{max-width:100%;max-height:98vh}
-"""
+JOBS = {}
 
 
-def get(url, **kw):
-    for i in range(3):
-        try:
-            r = s.get(url, timeout=20, **kw)
-            if r.status_code == 200:
-                return r
-        except requests.RequestException:
-            pass
-        time.sleep(1 + i)
-
-
-def extract_slug(x):
-    m = re.search(r'([0-9]+--[a-zA-Z0-9-]+)', x)
-    return m.group(1) if m else x.strip().strip('/')
-
-
-def fnum(x):
-    try:
-        return float(x)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def chapter_file(volume, number, part=0):
-    vol = str(volume).replace(".", "-")
-    num = str(number).replace(".", "-")
-    base = f"v{vol}_c{num}"
-    return f"{base}.xhtml" if not part else f"{base}_p{part}.xhtml"
-
-
-def pm_html(n, att):
-    """Convert the site's JSON document format (used by newer chapters) into plain HTML."""
-    if isinstance(n, str):
-        return html.escape(n)
-    t, kids = n.get("type"), "".join(pm_html(c, att) for c in n.get("content") or [])
-    if t == "text":
-        out = html.escape(n.get("text", ""))
-        for m in n.get("marks") or []:
-            tag = {"bold": "strong", "italic": "em", "strike": "s", "underline": "u"}.get(m.get("type"))
-            if tag:
-                out = f"<{tag}>{out}</{tag}>"
-        return out
-    if t == "image":
-        imgs = (n.get("attrs") or {}).get("images") or []
-        return "".join(f'<img src="{att[str(i.get("image"))]}"/>' for i in imgs if att.get(str(i.get("image"))))
-    if t == "hardBreak":
-        return "<br/>"
-    if t == "horizontalRule":
-        return "<p>***</p>"
-    tags = {"paragraph": "p", "blockquote": "blockquote", "bulletList": "ul", "orderedList": "ol",
-            "listItem": "li", "heading": "h3"}
-    return f"<{tags[t]}>{kids}</{tags[t]}>" if t in tags else kids
-
-
-def tidy(raw, book, n):
-    """Strip site styling, embed images on their own pages, normalise scene breaks."""
-    soup = BeautifulSoup(raw, 'html.parser')
-    for t in soup.find_all(True):
-        for a in ("style", "class", "id", "width", "height", "align", "srcset"):
-            if t.name != "img" or a not in ("srcset",):
-                t.attrs.pop(a, None)
-    for img in soup.find_all('img'):
-        url = img.get('src') or img.get('data-src')
-        r = get('https:' + url if url and url.startswith('//') else url) if url else None
-        if not r:
-            img.decompose()
-            continue
-        ext = url.split('?')[0].rsplit('.', 1)[-1].lower()
-        ext = ext if ext in ('jpg', 'jpeg', 'png', 'gif', 'webp') else 'jpg'
-        n[0] += 1
-        name = f"images/img_{n[0]}.{ext}"
-        book.add_item(epub.EpubItem(uid=f"img{n[0]}", file_name=name,
-                      media_type="image/" + ("jpeg" if ext == "jpg" else ext), content=r.content))
-        marker = Comment(f"IMG:{name}")  # build() splits the chapter here
-        p = img.find_parent("p")
-        if p:
-            p.insert_after(marker)
-            img.decompose()
-        else:
-            img.replace_with(marker)
-    for p in soup.find_all("p"):
-        txt = p.get_text(strip=True)
-        if not txt and not p.find("img"):
-            p.decompose()
-        elif re.fullmatch(r"[*\-–—_=~•#✦◆◇\s]{3,}", txt):
-            p.string = "* * *"
-            p["class"] = "scene"
-    return str(soup)
-
-
-def build(jid, d):
+def _run(jid, core, data):
     j = JOBS[jid]
     try:
-        slug, bid, vols = d["slug"], int(d["branch"]), set(d["volumes"])
-        chs = sorted((c for c in CACHE[slug] if str(c.get("volume")) in vols),
-                     key=lambda c: (fnum(c.get("volume")), fnum(c.get("number"))))
-        j["total"] = len(chs)
-        title = d["title"] + (f" · Том {next(iter(vols))}" if len(vols) == 1 else "")
-        book = epub.EpubBook()
-        book.set_identifier(f"ranobe-{slug}-{'-'.join(sorted(vols))}")
-        book.set_title(title)
-        book.set_language('ru')
-        css = epub.EpubItem(uid="css", file_name="style.css", media_type="text/css", content=CSS)
-        book.add_item(css)
-
-        cover = ""
-        if d.get("cover"):
-            r = get(d["cover"])
-            if r:
-                book.set_cover("cover.jpg", r.content, create_page=False)
-                cover = '<img src="cover.jpg" alt=""/>'
-        tp = epub.EpubHtml(title="Обложка", file_name="title.xhtml", lang='ru')
-        tp.content = f'''<div class="cover">{cover}
-            <h1>{html.escape(title)}</h1>
-            <p><a href="https://github.com/neoslvt/ranobelib-epub">ranobelib-epub by Neoslvt</a></p>
-            <p>Translated by {html.escape(d["team"])}</p>
-        </div>'''
-        tp.add_item(css)
-        book.add_item(tp)
-
-        groups, pages, n = {}, [], [0]
-        for c in chs:
-            v, num, name = c.get("volume"), c.get("number"), c.get("name") or ""
-            bs = c.get("branches", [])
-            if not bs:
-                continue
-            b = next((b for b in bs if b.get("branch_id") == bid), bs[0])
-            j["msg"] = f"Том {v}, глава {num}"
-            r = get(f"{API}/{slug}/chapter", params={'volume': v, 'number': num, 'branch_id': b.get("branch_id")})
-            data = (r.json().get("data") or {}) if r else {}
-            content = data.get("content")
-            if isinstance(content, dict):  # newer chapters come as a JSON document, not HTML
-                att = {}
-                for a in data.get("attachments") or []:
-                    u = str(a.get("url") or "")
-                    u = "https://ranobelib.me" + u if u.startswith("/") else u
-                    for k in ("name", "filename", "id"):
-                        att[str(a.get(k))] = u
-                content = pm_html(content, att)
-            j["done"] += 1
-            if not content:
-                continue
-            sub = f"<br/>{html.escape(name)}" if name else ""
-            head = f'<h2 class="ch">Глава {num}{sub}</h2>'
-            ch_title = f"Глава {num}" + (f": {name}" if name else "")
-            parts = re.split(r"<!--IMG:(.*?)-->", tidy(content, book, n))  # text, image, text, image, ...
-            first = None
-            for i, part in enumerate(parts):
-                if i % 2:  # every illustration gets its own file, so it is always alone on its page
-                    pg = epub.EpubHtml(title="Иллюстрация", file_name=chapter_file(v, num, i), lang='ru')
-                    pg.content = f'<div class="pic"><img src="{part}" alt=""/></div>'
-                else:
-                    frag = BeautifulSoup(part, 'html.parser')
-                    if i and not frag.get_text(strip=True):
-                        continue
-                    pg = epub.EpubHtml(title=ch_title, file_name=chapter_file(v, num, i), lang='ru')
-                    pg.content = (head if not i else "") + f'<div class="txt">{frag}</div>'
-                pg.add_item(css)
-                book.add_item(pg)
-                pages.append(pg)
-                if not i:
-                    first = pg
-            groups.setdefault(v, []).append(first)
-            time.sleep(0.5)
-
-        if not groups:
-            raise RuntimeError("No chapter text could be retrieved.")
-        starts = [c for g in groups.values() for c in g]
-        book.toc = [(epub.Section(f"Том {v}"), g) for v, g in groups.items()] if len(groups) > 1 else starts
-        book.add_item(epub.EpubNcx())
-        book.add_item(epub.EpubNav())
-        book.spine = [tp, 'nav'] + pages
-        fname = re.sub(r'[\\/:*?"<>|]', '', title).strip() + ".epub"
-        epub.write_epub(str(OUT / fname), book, {})
-        j.update(state="done", file=fname, msg="Ready")
+        j["file"] = core.build(j, data, OUT)
+        j.update(state="done", msg="Ready")
     except Exception as e:
         j.update(state="error", msg=str(e))
 
 
+def _core_options():
+    parts = []
+    for core in cores.all_cores():
+        meta = core.public()
+        parts.append(
+            '<option value="{id}" data-link="{link}" data-placeholder="{placeholder}">{name}</option>'.format(
+                id=html.escape(meta["id"], quote=True),
+                link=html.escape(meta["link"] or "", quote=True),
+                placeholder=html.escape(meta["placeholder"] or "", quote=True),
+                name=html.escape(meta["name"]),
+            )
+        )
+    return "".join(parts)
+
+
 @app.get("/")
 def index():
-    return send_from_directory(STATIC, "index.html")
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+    page = page.replace("<!--CORES-->", _core_options())
+    return page, {"Cache-Control": "no-store"}
+
+
+@app.get("/api/cores")
+def core_list():
+    return jsonify([c.public() for c in cores.all_cores()])
+
+
+@app.get("/api/match")
+def match():
+    core = cores.match(request.args.get("q", ""))
+    return jsonify(core=core.id if core else None)
 
 
 @app.get("/api/info")
 def info():
-    slug = extract_slug(request.args.get("q", ""))
-    r = get(f"{API}/{slug}/chapters") if slug else None
-    chs = r.json().get("data", []) if r else []
-    if not chs:
-        return jsonify(error="Couldn't find chapters. Check the link and try again."), 404
-    CACHE[slug] = chs
-    m = get(f"{API}/{slug}", params={"fields[]": [
-        "eng_name", "otherNames", "summary", "releaseDate", "views", "rate_avg", "rate",
-        "genres", "tags", "authors", "artists", "format"]})
-    meta = (m.json().get("data") or {}) if m else {}
-    vols, branches = {}, {}
-    for c in chs:
-        v = str(c.get("volume"))
-        vols[v] = vols.get(v, 0) + 1
-        for b in c.get("branches", []):
-            e = branches.setdefault(b.get("branch_id"), {
-                "id": b.get("branch_id"), "chapters": 0,
-                "name": ", ".join(t.get("name", "") for t in b.get("teams", []) if t.get("name")) or f"Branch {b.get('branch_id')}"})
-            e["chapters"] += 1
-    names = lambda L: [p.get("rus_name") or p.get("name") for p in L or [] if p.get("rus_name") or p.get("name")]
-    rt = meta.get("rating") or {}
-    facts = [[k, v] for k, v in [
-        ("Year", meta.get("releaseDateString") or meta.get("releaseDate")),
-        ("Status", (meta.get("status") or {}).get("label")),
-        ("Translation", (meta.get("scanlateStatus") or {}).get("label")),
-        ("Age", (meta.get("ageRestriction") or {}).get("label")),
-        ("Rating", f"{rt['averageFormated']} ({rt.get('votesFormated', 0)} votes)" if rt.get("averageFormated") else None),
-        ("Views", (meta.get("views") or {}).get("formated")),
-        ("Origin", (meta.get("type") or {}).get("label")),
-        ("Format", ", ".join(f.get("name", "") for f in meta.get("format") or [])),
-    ] if v]
-    return jsonify(
-        alt=meta.get("eng_name") or meta.get("name") or "", other=meta.get("otherNames") or [],
-        summary=pm_html(meta["summary"], {}) if meta.get("summary") else "",
-        genres=names(meta.get("genres")), tags=names(meta.get("tags")),
-        authors=names(meta.get("authors")), artists=names(meta.get("artists")),
-        notes=[c.get("label") for c in meta.get("content_marking") or [] if c.get("label")], facts=facts,
-        slug=slug, chapters=len(chs),
-        title=meta.get("rus_name") or meta.get("name") or meta.get("eng_name") or slug.split("--")[-1].replace("-", " ").title(),
-        cover=(meta.get("cover") or {}).get("default", ""),
-        volumes=[{"v": v, "n": n} for v, n in sorted(vols.items(), key=lambda x: fnum(x[0]))],
-        branches=list(branches.values()))
+    try:
+        core_id = request.args.get("core")
+        core = cores.get(core_id) if core_id else cores.match(request.args.get("q", ""))
+        if core is None:
+            raise CoreError("No source recognized that link.", 404)
+        payload = core.info(request.args.get("q", ""))
+        payload["core"] = core.id
+        return jsonify(payload)
+    except CoreError as e:
+        return jsonify(error=str(e)), e.status
 
 
 @app.get("/api/search")
 def search_books():
-    q = request.args.get("q", "").strip()
-    r = get(API, params={"q": q, "site_id[]": 3, "fields[]": ["rate_avg", "releaseDate"]}) if q else None
-    if not r:
-        return jsonify(error="Search failed. Check your connection and try again."), 502
-    out = []
-    for m in r.json().get("data", []):
-        out.append(dict(
-            slug=m.get("slug_url") or m.get("slug"),
-            title=m.get("rus_name") or m.get("name") or m.get("eng_name") or "",
-            alt=m.get("eng_name") or m.get("name") or "",
-            cover=(m.get("cover") or {}).get("thumbnail", ""),
-            type=(m.get("type") or {}).get("label", ""),
-            year=m.get("releaseDateString") or m.get("releaseDate") or "",
-            rating=(m.get("rating") or {}).get("averageFormated", ""),
-            status=(m.get("status") or {}).get("label", "")))
-    return jsonify(out)
+    try:
+        core = cores.get(request.args.get("core"))
+        hits = core.search(request.args.get("q", "")) or []
+    except CoreError as e:
+        return jsonify(error=str(e)), e.status
+    return jsonify([dict(hit, core=core.id, source=core.name) for hit in hits])
 
 
 @app.post("/api/start")
 def start():
+    data = request.get_json(silent=True) or {}
+    try:
+        core = cores.get(data.get("core"))
+    except CoreError as e:
+        return jsonify(error=str(e)), e.status
     jid = uuid.uuid4().hex[:8]
     JOBS[jid] = {"done": 0, "total": 0, "state": "running", "msg": "Starting…", "file": None}
-    threading.Thread(target=build, args=(jid, request.json), daemon=True).start()
+    threading.Thread(target=_run, args=(jid, core, data), daemon=True).start()
     return jsonify(id=jid)
 
 
@@ -321,20 +122,37 @@ def quit_app():
     return jsonify(ok=True)
 
 
-if __name__ == "__main__":
-    with socket.socket() as sk:
-        sk.bind(("127.0.0.1", 0))
-        port = sk.getsockname()[1]
-    url = f"http://127.0.0.1:{port}"
-    print(f"Books are saved to {OUT}")
-    threading.Thread(target=lambda: app.run("127.0.0.1", port), daemon=True).start()
+def open_window(url):
+    # On KDE, pywebview tries Qt first. PyQt without Qt WebEngine should fall through to GTK.
+    if sys.platform.startswith("linux") and not os.environ.get("PYWEBVIEW_GUI"):
+        try:
+            import qtpy.QtWebEngineCore  # noqa: F401
+        except Exception:
+            os.environ["PYWEBVIEW_GUI"] = "gtk"
     try:
         import webview
     except ImportError:
         print("pywebview is not installed, opening in the browser instead.")
         webbrowser.open(url)
         threading.Event().wait()
-    else:
+        return
+    try:
         getattr(webview, "settings", {})["ALLOW_DOWNLOADS"] = True  # lets the window save EPUBs
         webview.create_window("Ranobe to EPUB", url, width=920, height=860, min_size=(520, 600))
         webview.start()  # closing the window ends the app
+    except Exception as e:
+        print(f"The desktop window could not be opened ({e}). Opening in the browser instead.")
+        webbrowser.open(url)
+        threading.Event().wait()
+
+
+if __name__ == "__main__":
+    with socket.socket() as sk:
+        sk.bind(("127.0.0.1", 0))
+        port = sk.getsockname()[1]
+    url = f"http://127.0.0.1:{port}"
+    names = ", ".join(c.name for c in cores.all_cores()) or "none"
+    print(f"Sources: {names}")
+    print(f"Books are saved to {OUT}")
+    threading.Thread(target=lambda: app.run("127.0.0.1", port), daemon=True).start()
+    open_window(url)
