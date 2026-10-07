@@ -1,0 +1,23 @@
+{
+  "name": "ranobelib-epub",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Download ranobe and manga as EPUB. Source cores are plain JavaScript with no Node APIs so a React Native app can import them later.",
+  "engines": {
+    "node": ">=18"
+  },
+  "exports": {
+    ".": "./app.js",
+    "./cores": "./src/cores/index.js"
+  },
+  "scripts": {
+    "start": "qode app.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@nodegui/nodegui": "^0.74.2",
+    "fflate": "^0.8.2",
+    "node-html-parser": "6.1.13"
+  }
+}

@@ -9,7 +9,7 @@
 
 ## Возможности
 
-- Графический интерфейс. Работает на Windows, macOS и Linux.
+- Окно на Qt. Работает на Windows, macOS и Linux.
 - Выбор перевода (команды переводчиков) и томов: один, несколько или все сразу.
 - Поиск нужных ранобэ с детальной информацией.
 - Обложка, титульная страница и оглавление, сгруппированное по томам.
@@ -19,14 +19,16 @@
 
 ## Быстрый старт
 
-Нужен Python 3.9 или новее.
+Нужен Node.js 18 или новее.
 
 ```bash
 git clone https://github.com/neoslvt/ranobelib-epub.git
 cd ranobelib-epub
-pip install -r requirements.txt
-python app.py
+npm install
+npm start
 ```
+
+Команда откроет окно программы. Вместе с зависимостями ставится qode — среда Node.js, в которой работает NodeGui.
 
 ## Как пользоваться
 
@@ -37,37 +39,53 @@ python app.py
 
 Все книги сохраняются в папку `RanobeLibrary` в вашей домашней директории (на Windows это `C:\Users\Имя\RanobeLibrary`). Позже их можно сохранить повторно из списка **Your books** на главной странице.
 
-## Сборка программы
-
-Чтобы собрать приложение без установки Python:
-
-```bash
-# Linux и macOS
-pyinstaller --onefile --noconsole --name RanobeToEPUB --add-data "static:static" app.py
-
-# Windows
-pyinstaller --onefile --noconsole --name RanobeToEPUB --add-data "static;static" app.py
-```
-
-Готовый файл появится в папке `dist/`. Собирайте отдельно под каждую систему: PyInstaller не умеет собирать под другую ОС.
-
 ## Структура проекта
+
+Окно собрано на NodeGui. Исходники в `src/cores/` написаны на обычном JavaScript: `fetch`, `Uint8Array` и чистые зависимости, без `fs` и других модулей Node. Сохранение файла остаётся снаружи: окно пишет EPUB на диск.
 
 ```
 ranobelib-epub/
-├── app.py            # сервер, загрузка глав и сборка EPUB
+├── app.js                 # запуск окна
+├── src/
+│   ├── gui.js             # интерфейс на NodeGui
+│   ├── actions.js         # поиск, сборка и библиотека
+│   ├── server.js          # локальный HTTP API
+│   ├── load-cores.js      # дополнительные ядра из папки cores/ (только Node)
+│   └── cores/             # ядра источников, совместимые с React Native
+├── cores/                 # свои ядра: положите сюда файл .js
 ├── static/
-│   └── index.html    # интерфейс
-└── requirements.txt
+│   └── index.html         # интерфейс
+└── package.json
+```
+
+Своё ядро — это файл в `cores/`, который экспортирует экземпляр `CORE`. Он подхватывается при следующем запросе.
+
+```js
+import { Core } from "../src/cores/base.js";
+
+class Example extends Core {
+  id = "example";
+  name = "Example";
+  async search() {
+    return [];
+  }
+  async info(query) {
+    return { title: query, slug: query, volumes: [], branches: [], chapters: 0 };
+  }
+  async build() {
+    throw new Error("Not implemented");
+  }
+}
+
+export const CORE = new Example();
 ```
 
 ## Если что-то не работает
 
 | Проблема | Что делать |
 |---|---|
-| Ошибка 404 при запуске | `index.html` должен лежать в папке `static` рядом с `app.py` (или прямо рядом с ним). |
-| Linux: окно не открывается | Установите Qt-версию: `pip install "pywebview[qt]"`. Без `pywebview` приложение откроется во вкладке браузера. |
-| Windows: пустое окно | Установите [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/). Обычно он уже есть. |
+| Ошибка 404 при запуске | `index.html` должен лежать в папке `static`. |
+| Окно не открылось | Запускайте через `npm start`. Нужны обычные библиотеки рабочего стола (X11 или Wayland). Текст ошибки будет в терминале. |
 | «Couldn't find chapters» | Проверьте ссылку и подключение к интернету. |
 | Загрузка идёт медленно | Это нормально: между главами сделана пауза в полсекунды, чтобы не нагружать сайт. |
 
