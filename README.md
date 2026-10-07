@@ -2,10 +2,7 @@
 
 Приложение для скачивания ранобэ с [ranobelib](https://ranobelib.me) в формате EPUB. Вставьте ссылку, выберите перевод и тома, а потом читайте на любом устройстве без интернета.
 
-![Меню](docs/menu.png)
-![Поиск](docs/search.png)
-![Ранобэ](docs/parsed.png)
-![Скачивание](docs/download.png)
+<img src="docs/menu.png" width="190"> <img src="docs/search.png" width="190"> <img src="docs/parsed.png" width="190"> <img src="docs/download.png" width="190">
 
 ## Возможности
 
