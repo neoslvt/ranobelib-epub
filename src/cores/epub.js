@@ -15,6 +15,15 @@ function bytesOf(content) {
   return encoder.encode(String(content ?? ""));
 }
 
+// JPEG, PNG, and WebP are already compressed. Deflating them on a phone
+// freezes the UI for a long time and barely shrinks the file.
+function zipEntry(content, mediaType) {
+  const bytes = bytesOf(content);
+  const type = String(mediaType || "").split(";")[0].trim().toLowerCase();
+  if (type.startsWith("image/")) return [bytes, { level: 0 }];
+  return bytes;
+}
+
 export class EpubItem {
   constructor({ uid, fileName, mediaType, content }) {
     this.uid = uid;
@@ -242,8 +251,8 @@ ${spine.join("\n")}
         cssHrefs,
       });
     }
-    files[`OEBPS/${item.fileName}`] = bytesOf(content);
+    files[`OEBPS/${item.fileName}`] = zipEntry(content, item.mediaType);
   }
 
-  return zipSync(files);
+  return zipSync(files, { level: 1 });
 }

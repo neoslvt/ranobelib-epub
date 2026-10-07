@@ -54,6 +54,12 @@ const IMAGE_EXT = {
   "image/gif": "gif",
 };
 
+function chapterLocked(payload) {
+  if (payload?.bundle && payload.bundle.is_open === false) return true;
+  if (payload?.restricted_view && payload.restricted_view.is_open === false) return true;
+  return false;
+}
+
 export class MangaLib extends Core {
   id = "mangalib";
   name = "MangaLib";
@@ -73,7 +79,7 @@ export class MangaLib extends Core {
     });
     this.cache = new Map();
     this.imageRootUrl = "";
-    this.chapterPause = 300;
+    this.chapterPause = 150;
   }
 
   extractSlug(value) {
@@ -171,12 +177,15 @@ export class MangaLib extends Core {
     const groups = new Map();
     const pages = [];
     const counter = { n: 0 };
+    let tried = 0;
+    let locked = 0;
     for (const chapter of chapters) {
       const volume = chapter.volume;
       const number = chapter.number;
       const name = chapter.name || "";
       const branches = chapter.branches || [];
       if (!branches.length) continue;
+      tried += 1;
       const branch = branches.find((item) => sameBranch(item.branch_id, branchId)) || branches[0];
       job.msg = `Том ${volume}, глава ${number}`;
       const response = await this.http.get(`${API}/${slug}/chapter`, {
@@ -184,10 +193,11 @@ export class MangaLib extends Core {
       });
       const payload = response ? response.json().data || {} : {};
       const shots = [...(payload.pages || [])].sort((a, b) => fnum(a.slug) - fnum(b.slug));
-      job.done += 1;
+      if (!shots.length && chapterLocked(payload)) locked += 1;
       const chapterTitle = `Глава ${number}${name ? `: ${name}` : ""}`;
       let first = null;
       for (let i = 0; i < shots.length; i++) {
+        job.msg = `Том ${volume}, глава ${number} · ${i + 1}/${shots.length}`;
         const image = await this.http.get(await this.pageUrl(shots[i]?.url));
         const type = (image?.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
         if (!image || !type.startsWith("image/")) continue;
@@ -218,16 +228,27 @@ export class MangaLib extends Core {
         list.push(first);
         groups.set(volume, list);
       }
+      job.done += 1;
       await sleep(this.chapterPause);
     }
 
-    if (!groups.size) throw new Error("No chapter pages could be retrieved.");
+    if (!groups.size) {
+      if (locked && locked === tried) {
+        throw new CoreError(
+          "These chapters are in a paid volume. Page images are available after that volume is purchased.",
+          403,
+        );
+      }
+      throw new Error("No chapter pages could be retrieved.");
+    }
     const starts = [...groups.values()].flat();
     book.toc =
       groups.size > 1
         ? [...groups.entries()].map(([volume, group]) => ({ title: `Том ${volume}`, children: group }))
         : starts;
     book.spine = [titlePage, "nav", ...pages];
+    job.msg = "Packing the EPUB…";
+    await sleep(250);
     return { filename: epubName(title), bytes: writeEpub(book) };
   }
 }

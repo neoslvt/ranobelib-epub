@@ -1,13 +1,14 @@
 import { CoreError } from "./base.js";
+import { CORE as hubCore } from "./mangahub.js";
 import { CORE as mangaCore } from "./mangalib.js";
 import { CORE as ranobeCore } from "./ranobelib.js";
 
 export { Core, CoreError } from "./base.js";
-export { mangaCore, ranobeCore };
+export { hubCore, mangaCore, ranobeCore };
 
 // Built-in sources, in the order the menu shows them. Extra cores passed in
 // replace a built-in with the same id. This module does not read the disk.
-const BUILTINS = [ranobeCore, mangaCore];
+const BUILTINS = [ranobeCore, mangaCore, hubCore];
 
 export function allCores(extra = []) {
   const extraIds = new Set(extra.map((core) => core.id));

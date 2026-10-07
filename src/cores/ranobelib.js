@@ -38,7 +38,7 @@ export class RanobeLib extends Core {
       "Client-Time-Zone": "Asia/Almaty",
     });
     this.cache = new Map();
-    this.chapterPause = 500;
+    this.chapterPause = 150;
   }
 
   extractSlug(value) {
@@ -144,8 +144,11 @@ export class RanobeLib extends Core {
       if (content && typeof content === "object") {
         content = pmHtml(content, attachmentMap(payload.attachments, "https://ranobelib.me"));
       }
-      job.done += 1;
-      if (!content) continue;
+      if (!content) {
+        job.done += 1;
+        await sleep(this.chapterPause);
+        continue;
+      }
       const sub = name ? `<br/>${escapeHtml(name)}` : "";
       const head = `<h2 class="ch">Глава ${number}${sub}</h2>`;
       const chapterTitle = `Глава ${number}${name ? `: ${name}` : ""}`;
@@ -178,6 +181,7 @@ export class RanobeLib extends Core {
       const list = groups.get(volume) || [];
       list.push(first);
       groups.set(volume, list);
+      job.done += 1;
       await sleep(this.chapterPause);
     }
 
@@ -188,6 +192,8 @@ export class RanobeLib extends Core {
         ? [...groups.entries()].map(([volume, group]) => ({ title: `Том ${volume}`, children: group }))
         : starts;
     book.spine = [titlePage, "nav", ...pages];
+    job.msg = "Packing the EPUB…";
+    await sleep(250);
     return { filename: epubName(title), bytes: writeEpub(book) };
   }
 }
