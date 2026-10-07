@@ -1,5 +1,6 @@
 import { parse } from "node-html-parser";
 import { EpubItem } from "./epub.js";
+import { pool } from "./http.js";
 
 // Relative units, no forced colours or fonts: readers keep their own theme, font and night mode.
 export const CSS = `
@@ -216,10 +217,14 @@ export async function tidy(raw, book, counter, fetch) {
       if (!image || attr !== "srcset") el.removeAttribute(attr);
     }
   }
-  for (const img of [...root.querySelectorAll("img")]) {
+  const images = [...root.querySelectorAll("img")];
+  const fetched = await pool(6, images, async (img) => {
     let url = img.getAttribute("src") || img.getAttribute("data-src");
     if (url && url.startsWith("//")) url = `https:${url}`;
     const response = url ? await fetch(url) : null;
+    return { img, url, response };
+  });
+  for (const { img, url, response } of fetched) {
     if (!response) {
       img.remove();
       continue;

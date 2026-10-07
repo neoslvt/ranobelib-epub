@@ -12,7 +12,7 @@ import {
   splitMarkers,
   tidy,
 } from "../src/cores/kit.js";
-import { withParams } from "../src/cores/http.js";
+import { pool, sleep, withParams } from "../src/cores/http.js";
 
 test("sameBranch treats empty, null, and numeric strings as the same id", () => {
   assert.equal(sameBranch(null, ""), true);
@@ -93,6 +93,14 @@ test("catalog helpers match the site payload shape", () => {
   assert.equal(info.branches[0].name, "Default");
   assert.equal(info.branches[1].name, "Team A");
   assert.equal(info.facts.find(([key]) => key === "Rating")[1], "9 (10 votes)");
+});
+
+test("pool keeps result order while work overlaps", async () => {
+  const out = await pool(3, [1, 2, 3, 4], async (n) => {
+    await sleep(n === 1 ? 20 : 0);
+    return n * 2;
+  });
+  assert.deepEqual(out, [2, 4, 6, 8]);
 });
 
 test("file names and query strings stay portable", () => {

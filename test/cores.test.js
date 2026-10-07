@@ -226,6 +226,47 @@ const HUB_READER = `
 <reader-scan class="reader-viewer-scan"><img data-src="//img.example/b.jpg" /></reader-scan>
 <reader-scan class="reader-viewer-scan"><img data-src="//img.example/a.jpg" /></reader-scan>`;
 
+test("mangahub submits the age confirmation and then reads the chapter", async () => {
+  const core = new MangaHub();
+  core.chapterPause = 0;
+  const gate = `<form method="POST"><input type="hidden" id="confirm_age__token" name="confirm_age[_token]" value="csrf-token" /></form>`;
+  let reads = 0;
+  core.http.get = async (url) => {
+    if (url.includes("/chapters")) return htmlResponse(HUB_CHAPTERS);
+    if (url.includes("/read/")) {
+      reads += 1;
+      return htmlResponse(reads === 1 ? gate : HUB_READER);
+    }
+    if (url.includes("img.example")) return imageResponse(new Uint8Array([4]), "image/jpeg");
+    return htmlResponse("");
+  };
+  core.http.send = async (url, options) => {
+    assert.equal(options.method, "POST");
+    assert.match(options.body, /csrf-token/);
+    assert.match(options.body, /dismissAlways/);
+    core.http.jar.set("confirm_age", "1");
+    return {
+      status: 302,
+      bytes: new Uint8Array(),
+      headers: { get: (name) => (String(name).toLowerCase() === "location" ? "/read/10" : null) },
+      text: () => "",
+    };
+  };
+
+  const job = { done: 0, total: 0, msg: "" };
+  const result = await core.build(job, {
+    slug: "made_in_abyss",
+    title: "Созданный в бездне",
+    branch: null,
+    team: "Animeread",
+    volumes: ["1"],
+  });
+  assert.equal(reads, 2);
+  assert.equal(result.filename, "Созданный в бездне · Том 1.epub");
+  const files = unzipSync(result.bytes);
+  assert.match(strFromU8(files["OEBPS/v1_c1-5.xhtml"]), /Глава 1.5: Старт/);
+});
+
 test("mangahub reads a title page and builds page images", async () => {
   const core = new MangaHub();
   core.chapterPause = 0;

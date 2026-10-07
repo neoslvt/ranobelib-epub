@@ -1,7 +1,7 @@
 import { parse } from "node-html-parser";
 import { Core, CoreError } from "./base.js";
 import { EpubBook, EpubHtml, EpubItem, writeEpub } from "./epub.js";
-import { HttpClient, sleep } from "./http.js";
+import { HttpClient, pool, sleep } from "./http.js";
 import {
   chapterFile,
   epubName,
@@ -213,6 +213,11 @@ function ageGate(html) {
   return String(html || "").includes("confirm_age[_token]");
 }
 
+function ageToken(html) {
+  const input = /<input[^>]*name="confirm_age\[_token\]"[^>]*>/i.exec(String(html || ""))?.[0] || "";
+  return /value="([^"]*)"/.exec(input)?.[1] || "";
+}
+
 export class MangaHub extends Core {
   id = "mangahub";
   name = "MangaHub";
@@ -226,10 +231,11 @@ export class MangaHub extends Core {
       Referer: `${SITE}/`,
       "User-Agent":
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
-      Cookie: "confirm_age=1",
     });
+    this.http.jar.set("confirm_age", "1");
     this.cache = new Map();
-    this.chapterPause = 150;
+    this.chapterPause = 0;
+    this.imageSlots = 6;
   }
 
   extractSlug(value) {
@@ -245,11 +251,42 @@ export class MangaHub extends Core {
     if (direct && !/\/read\/\d+/.test(String(query || ""))) return direct;
     const readId = /\/read\/(\d+)/.exec(String(query || ""))?.[1];
     if (!readId) return direct;
-    const response = await this.http.get(`${SITE}/read/${readId}`);
-    const html = response ? response.text() : "";
+    const html = await this.readChapter(`${SITE}/read/${readId}`);
     const slug = /\/title\/([a-zA-Z0-9_]+)/.exec(html)?.[1];
     if (!slug) throw new CoreError("Couldn't find that chapter. Check the link and try again.", 404);
     return slug;
+  }
+
+  async readChapter(url) {
+    let response = await this.http.get(url);
+    let html = response ? response.text() : "";
+    if (!ageGate(html)) return html;
+    const token = ageToken(html);
+    if (!token) {
+      throw new CoreError("MangaHub is asking to confirm you are 18 before it shows this chapter.", 403);
+    }
+    const posted = await this.http.send(url, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        Referer: url,
+        Origin: SITE,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        "confirm_age[_token]": token,
+        "confirm_age[dismissAlways]": "1",
+      }).toString(),
+    });
+    const postedHtml = posted ? posted.text() : "";
+    if (postedHtml && !ageGate(postedHtml) && pageUrls(postedHtml).length) return postedHtml;
+    const next = absUrl(posted?.headers.get("location") || url);
+    response = await this.http.get(next);
+    html = response ? response.text() : "";
+    if (ageGate(html)) {
+      throw new CoreError("MangaHub is asking to confirm you are 18 before it shows this chapter.", 403);
+    }
+    return html;
   }
 
   async chapters(slug) {
@@ -372,27 +409,29 @@ export class MangaHub extends Core {
       if (!branches.length) continue;
       if (!branches.some((item) => sameBranch(item.branch_id, branchId))) continue;
       job.msg = `Том ${volume}, глава ${number}`;
-      const response = await this.http.get(`${SITE}/read/${chapter.id}`);
-      const html = response ? response.text() : "";
-      if (ageGate(html)) {
-        throw new CoreError("MangaHub is asking to confirm you are 18 before it shows this chapter.", 403);
-      }
+      const html = await this.readChapter(`${SITE}/read/${chapter.id}`);
       const shots = pageUrls(html);
       const chapterTitle = `Глава ${number}${name ? `: ${name}` : ""}`;
-      let first = null;
-      for (let i = 0; i < shots.length; i++) {
-        job.msg = `Том ${volume}, глава ${number} · ${i + 1}/${shots.length}`;
-        const image = await this.http.get(shots[i]);
+      let ready = 0;
+      const downloaded = await pool(this.imageSlots, shots, async (shot) => {
+        const image = await this.http.get(shot);
+        ready += 1;
+        job.msg = `Том ${volume}, глава ${number} · ${ready}/${shots.length}`;
         const type = (image?.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
-        if (!image || !type.startsWith("image/")) continue;
-        const ext = IMAGE_EXT[type] || "jpg";
+        if (!image || !type.startsWith("image/")) return null;
+        return { bytes: image.bytes, ext: IMAGE_EXT[type] || "jpg" };
+      });
+      let first = null;
+      for (let i = 0; i < downloaded.length; i++) {
+        const image = downloaded[i];
+        if (!image) continue;
         counter.n += 1;
-        const fileName = `images/img_${counter.n}.${ext}`;
+        const fileName = `images/img_${counter.n}.${image.ext}`;
         book.addItem(
           new EpubItem({
             uid: `img${counter.n}`,
             fileName,
-            mediaType: `image/${ext === "jpg" ? "jpeg" : ext}`,
+            mediaType: `image/${image.ext === "jpg" ? "jpeg" : image.ext}`,
             content: image.bytes,
           }),
         );
@@ -413,7 +452,7 @@ export class MangaHub extends Core {
         groups.set(volume, list);
       }
       job.done += 1;
-      await sleep(this.chapterPause);
+      if (this.chapterPause) await sleep(this.chapterPause);
     }
 
     if (!groups.size) throw new Error("No chapter pages could be retrieved.");

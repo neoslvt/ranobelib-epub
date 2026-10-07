@@ -1,6 +1,6 @@
 import { Core, CoreError } from "./base.js";
 import { EpubBook, EpubHtml, EpubItem, writeEpub } from "./epub.js";
-import { HttpClient, sleep } from "./http.js";
+import { HttpClient, pool, sleep } from "./http.js";
 import {
   buildInfo,
   chapterFile,
@@ -79,7 +79,8 @@ export class MangaLib extends Core {
     });
     this.cache = new Map();
     this.imageRootUrl = "";
-    this.chapterPause = 150;
+    this.chapterPause = 0;
+    this.imageSlots = 6;
   }
 
   extractSlug(value) {
@@ -195,20 +196,26 @@ export class MangaLib extends Core {
       const shots = [...(payload.pages || [])].sort((a, b) => fnum(a.slug) - fnum(b.slug));
       if (!shots.length && chapterLocked(payload)) locked += 1;
       const chapterTitle = `Глава ${number}${name ? `: ${name}` : ""}`;
-      let first = null;
-      for (let i = 0; i < shots.length; i++) {
-        job.msg = `Том ${volume}, глава ${number} · ${i + 1}/${shots.length}`;
-        const image = await this.http.get(await this.pageUrl(shots[i]?.url));
+      let ready = 0;
+      const downloaded = await pool(this.imageSlots, shots, async (shot) => {
+        const image = await this.http.get(await this.pageUrl(shot?.url));
+        ready += 1;
+        job.msg = `Том ${volume}, глава ${number} · ${ready}/${shots.length}`;
         const type = (image?.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
-        if (!image || !type.startsWith("image/")) continue;
-        const ext = IMAGE_EXT[type] || "jpg";
+        if (!image || !type.startsWith("image/")) return null;
+        return { bytes: image.bytes, ext: IMAGE_EXT[type] || "jpg" };
+      });
+      let first = null;
+      for (let i = 0; i < downloaded.length; i++) {
+        const image = downloaded[i];
+        if (!image) continue;
         counter.n += 1;
-        const fileName = `images/img_${counter.n}.${ext}`;
+        const fileName = `images/img_${counter.n}.${image.ext}`;
         book.addItem(
           new EpubItem({
             uid: `img${counter.n}`,
             fileName,
-            mediaType: `image/${ext === "jpg" ? "jpeg" : ext}`,
+            mediaType: `image/${image.ext === "jpg" ? "jpeg" : image.ext}`,
             content: image.bytes,
           }),
         );
@@ -229,7 +236,7 @@ export class MangaLib extends Core {
         groups.set(volume, list);
       }
       job.done += 1;
-      await sleep(this.chapterPause);
+      if (this.chapterPause) await sleep(this.chapterPause);
     }
 
     if (!groups.size) {

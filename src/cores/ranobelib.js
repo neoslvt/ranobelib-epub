@@ -38,7 +38,7 @@ export class RanobeLib extends Core {
       "Client-Time-Zone": "Asia/Almaty",
     });
     this.cache = new Map();
-    this.chapterPause = 150;
+    this.chapterPause = 0;
   }
 
   extractSlug(value) {
@@ -146,7 +146,7 @@ export class RanobeLib extends Core {
       }
       if (!content) {
         job.done += 1;
-        await sleep(this.chapterPause);
+        if (this.chapterPause) await sleep(this.chapterPause);
         continue;
       }
       const sub = name ? `<br/>${escapeHtml(name)}` : "";
@@ -182,7 +182,7 @@ export class RanobeLib extends Core {
       list.push(first);
       groups.set(volume, list);
       job.done += 1;
-      await sleep(this.chapterPause);
+      if (this.chapterPause) await sleep(this.chapterPause);
     }
 
     if (!groups.size) throw new Error("No chapter text could be retrieved.");
