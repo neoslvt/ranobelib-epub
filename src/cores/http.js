@@ -91,9 +91,61 @@ function asResponse(res) {
 }
 
 // React Native's fetch base64-encodes every body, then Hermes decodes it on the
-// only JS thread, so image downloads in the pool wait on each other. The Android
-// module speaks OkHttp and hands back a Uint8Array. Node and iOS stay on fetch.
+// only JS thread, so image downloads in the pool wait on each other. Android
+// writes each body to a cache file. Pictures stay there until the EPUB is packed.
+// Node and iOS stay on fetch.
 let nativeExchange;
+const pendingDownloads = new Set();
+
+class StoredBytes {
+  constructor(uri) {
+    this.uri = uri;
+    this.cached = null;
+    pendingDownloads.add(this);
+  }
+
+  load() {
+    if (this.cached) return this.cached;
+    this.cached = readStored(this.uri);
+    this.uri = "";
+    pendingDownloads.delete(this);
+    return this.cached;
+  }
+
+  discard() {
+    if (!this.uri) return;
+    const uri = this.uri;
+    this.uri = "";
+    pendingDownloads.delete(this);
+    deleteStored(uri);
+  }
+}
+
+export function releaseDownloads() {
+  for (const item of [...pendingDownloads]) item.discard();
+}
+
+function fileApi() {
+  return require("expo-file-system").File;
+}
+
+function readStored(uri) {
+  const file = new (fileApi())(uri);
+  try {
+    return file.bytesSync();
+  } finally {
+    deleteStored(uri);
+  }
+}
+
+function deleteStored(uri) {
+  if (!uri) return;
+  try {
+    new (fileApi())(uri).delete();
+  } catch {
+    // The file was already removed, or this response was never saved.
+  }
+}
 
 function androidExchange() {
   if (nativeExchange !== undefined) return nativeExchange;
@@ -120,14 +172,17 @@ function flatHeaders(headers) {
 }
 
 function responseFromNative(result) {
-  const bytes = result?.bytes;
-  if (!(bytes instanceof Uint8Array)) return undefined;
+  const uri = typeof result?.file === "string" ? result.file : "";
+  if (!uri) return undefined;
   const headerMap = new Map();
   for (const [key, value] of Object.entries(result.headers || {})) {
     if (value == null) continue;
     headerMap.set(String(key).toLowerCase(), String(value));
   }
-  const text = () => new TextDecoder().decode(bytes);
+  const type = (headerMap.get("content-type") || "").split(";")[0].trim().toLowerCase();
+  // Chapter JSON and HTML are small. Page images are not: keep them on disk.
+  const bytes = type.startsWith("image/") ? new StoredBytes(uri) : readStored(uri);
+  const text = () => new TextDecoder().decode(typeof bytes.load === "function" ? bytes.load() : bytes);
   return {
     status: Number(result.status),
     bytes,

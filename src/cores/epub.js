@@ -12,6 +12,12 @@ function xml(value) {
 
 function bytesOf(content) {
   if (content instanceof Uint8Array) return content;
+  // Android downloads leave image bytes in a cache file until the zip is built,
+  // so the JS thread is not copying them while the next request starts.
+  if (typeof content?.load === "function") {
+    const bytes = content.load();
+    if (bytes instanceof Uint8Array) return bytes;
+  }
   return encoder.encode(String(content ?? ""));
 }
 

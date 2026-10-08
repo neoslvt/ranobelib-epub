@@ -431,7 +431,7 @@ export class MangaHub extends Core {
         book.addItem(
           new EpubItem({
             uid: `img${counter.n}`,
-            fileNamePath,
+            fileName: fileNamePath,
             mediaType: `image/${image.ext === "jpg" ? "jpeg" : image.ext}`,
             content: image.bytes,
           }),
