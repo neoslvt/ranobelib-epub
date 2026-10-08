@@ -426,11 +426,12 @@ export class MangaHub extends Core {
         const image = downloaded[i];
         if (!image) continue;
         counter.n += 1;
-        const fileName = `images/img_${counter.n}.${image.ext}`;
+        const fileName = `img_${counter.n}.${image.ext}`;
+        const fileNamePath = `images/${fileName}`;
         book.addItem(
           new EpubItem({
             uid: `img${counter.n}`,
-            fileName,
+            fileNamePath,
             mediaType: `image/${image.ext === "jpg" ? "jpeg" : image.ext}`,
             content: image.bytes,
           }),
@@ -440,7 +441,7 @@ export class MangaHub extends Core {
           fileName: chapterFile(volume, number, i),
           lang: "ru",
         });
-        page.content = `<div class="pic"><img src="${fileName}" alt=""/></div>`;
+        page.content = `<div class="pic"><img src="images/${fileName}" alt="${fileName}"/></div>`;
         page.addItem(css);
         book.addItem(page);
         pages.push(page);

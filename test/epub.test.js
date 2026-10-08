@@ -45,6 +45,8 @@ test("writeEpub stores mimetype first and packs the book", () => {
   assert.match(opf, /Demo &amp; Co/);
   assert.match(opf, /id="nav"/);
   assert.match(opf, /properties="cover-image"/);
+  assert.match(opf, /media-type="application\/xhtml\+xml"/);
+  assert.doesNotMatch(opf, /media-type="undefined"/);
   assert.match(strFromU8(files["OEBPS/v1_c1.xhtml"]), /<p>Hello<\/p>/);
   assert.match(strFromU8(files["OEBPS/nav.xhtml"]), /Глава 1/);
   assert.equal(files["OEBPS/cover.jpg"].length, 4);

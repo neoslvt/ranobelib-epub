@@ -28,16 +28,17 @@ export class EpubItem {
   constructor({ uid, fileName, mediaType, content }) {
     this.uid = uid;
     this.fileName = fileName;
-    this.mediaType = mediaType;
+    this.mediaType = mediaType || "application/xhtml+xml";
     this.content = content;
   }
 }
 
 export class EpubHtml {
-  constructor({ title, fileName, lang, content = "" }) {
+  constructor({ title, fileName, lang, content = "", mediaType = "application/xhtml+xml" }) {
     this.title = title;
     this.fileName = fileName;
     this.lang = lang || "en";
+    this.mediaType = mediaType;
     this.content = content;
     this.styles = [];
   }

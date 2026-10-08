@@ -6,7 +6,7 @@ import { pool } from "./http.js";
 export const CSS = `
 body{margin:0;padding:0 .4em;line-height:1.6;hyphens:auto;-webkit-hyphens:auto;orphans:2;widows:2}
 .cover{text-align:center;padding-top:10%;page-break-after:always}
-.cover img{max-width:78%;max-height:68vh;box-shadow:0 .3em 1em rgba(0,0,0,.4)}
+.cover img{text-align: center;text-indent: 0;}
 .cover h1{font-size:1.7em;line-height:1.2;margin:1.1em 0 .3em}
 .cover p{margin:0;text-indent:0;opacity:.6}
 h2.ch{text-align:center;font-size:1.5em;line-height:1.25;margin:3em 0 1.8em;page-break-after:avoid}
@@ -18,7 +18,7 @@ h2.ch:after{content:"";display:block;width:3em;margin:1em auto 0;border-top:1px 
 .txt blockquote{margin:1em 1.6em;font-style:italic;opacity:.9}
 .txt h1,.txt h2,.txt h3{text-align:center;margin:1.6em 0 .8em;page-break-after:avoid}
 .pic{text-align:center;margin:0;padding:0}
-.pic img{max-width:100%;max-height:98vh}
+.pic img{text-align: center;text-indent: 0;}
 `;
 
 const SCENE = /^[*\-–—_=~•#✦◆◇\s]{3,}$/u;

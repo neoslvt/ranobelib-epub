@@ -163,7 +163,9 @@ export class RanobeLib extends Core {
             fileName: chapterFile(volume, number, i),
             lang: "ru",
           });
-          page.content = `<div class="pic"><img src="${part}" alt=""/></div>`;
+          const imageUrl = String(part || "");
+          const imageName = imageUrl.split("/").pop() || "image";
+          page.content = `<div class="pic"><img src="${imageUrl}" alt="${imageName}"/></div>`;
         } else {
           if (i && !hasText(part)) continue;
           page = new EpubHtml({
