@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { unzipSync, strFromU8 } from "fflate";
 import { CoreError } from "../src/cores/base.js";
+import { Flibusta } from "../src/cores/flibusta.js";
 import { MangaHub } from "../src/cores/mangahub.js";
 import { MangaLib } from "../src/cores/mangalib.js";
 import { RanobeLib } from "../src/cores/ranobelib.js";
@@ -32,13 +33,16 @@ function imageResponse(bytes, type) {
 test("ambiguous slugs prefer the longer ranobelib pattern", () => {
   assert.deepEqual(
     allCores().map((core) => core.id),
-    ["ranobelib", "mangalib", "mangahub"],
+    ["ranobelib", "mangalib", "mangahub", "yamiko", "flibusta"],
   );
   assert.equal(matchCore("https://ranobelib.me/ru/1--demo").id, "ranobelib");
   assert.equal(matchCore("https://mangalib.me/catalog").id, "mangalib");
   assert.equal(matchCore("15--some-title").id, "ranobelib");
   assert.equal(matchCore("https://mangahub.ru/title/made_in_abyss").id, "mangahub");
   assert.equal(matchCore("https://mangahub.ru/read/764191").id, "mangahub");
+  assert.equal(matchCore("https://flibusta.is/b/744463/epub").id, "flibusta");
+  assert.equal(matchCore("https://flibusta.is/sequence/70296").id, "flibusta");
+  assert.equal(matchCore("https://flibusta.site/b/744463/epub").id, "flibusta");
   assert.equal(matchCore("not a link"), null);
 });
 
@@ -317,4 +321,71 @@ test("mangahub reads a title page and builds page images", async () => {
   assert.match(strFromU8(files["OEBPS/v1_c1-5.xhtml"]), /Глава 1.5: Старт/);
   assert.match(strFromU8(files["OEBPS/v1_c1-5_p1.xhtml"]), /images\/img_2\.jpg/);
   assert.equal(files["OEBPS/images/img_1.jpg"].length, 2);
+});
+
+const FLIBUSTA_SEARCH = `
+<h3>Найденные серии (1 - 1 из 1):</h3>
+<ul><li><a href="/sequence/70296"><b>1984</b> - ru (версии)</a> (2 книги)</li></ul>
+<h3>Найденные книги (1 - 1 из 1):</h3>
+<ul><li><a href="/b/744463"><b>1984</b></a> - <a href="/a/9162">Джордж Оруэлл</a></li></ul>`;
+
+const FLIBUSTA_SEQUENCE = `
+<h1 class="title">1984 - ru (версии)</h1>
+<table><tr><td><b>Авторы:</b></td><td><a href="/a/9162">Джордж Оруэлл</a></td></tr>
+<tr><td><b>Жанры:</b></td><td><a href="/g/269">Антиутопия</a></td></tr></table>
+<input type="radio" name="seqtype" value="1" checked="checked">
+<input name="bchk744463"> - <a href="/b/744463">1984</a> (пер. <a href="/a/1">Соколов</a>) <span>10K, 3 с.</span> <a href="/b/744463/epub">(epub)</a>
+<br><input name="bchk2"> - <a href="/b/2">1984</a> [ru] (пер. <a href="/a/2">Голышев</a>) <a href="/b/2/epub">(epub)</a>
+<br>`;
+
+const FLIBUSTA_BOOK = `
+<h1 class="title">1984 (fb2)</h1>
+<a href="/a/9162">Джордж Оруэлл</a> (перевод: <a href="/a/1">Соколов</a>)
+<a href="/g/269" class="genre">Антиутопия</a>
+<img src="/i/63/744463/cover.jpg" alt="Cover image" />
+издание 2023 г. издано в серии <a href="/s/70296">1984 - ru (версии)</a>
+<h2>Аннотация</h2>
+<p>Коротко о книге.</p>`;
+
+test("flibusta lists translations and keeps the downloaded epub", async () => {
+  const core = new Flibusta();
+  const epub = new Uint8Array([0x50, 0x4b, 3, 4, 9]);
+  core.http.get = async (url) => {
+    if (url.includes("/booksearch")) return htmlResponse(FLIBUSTA_SEARCH);
+    if (url.includes("/sequence/70296")) return htmlResponse(FLIBUSTA_SEQUENCE);
+    if (url.includes("/sequence/1") || url.endsWith("/sequence/1")) return htmlResponse(FLIBUSTA_SERIES);
+    if (url.includes("/b/744463") && !url.endsWith("/epub")) return htmlResponse(FLIBUSTA_BOOK);
+    if (url.endsWith("/epub")) return imageResponse(epub, "application/octet-stream");
+    return null;
+  };
+
+  const hits = await core.search("1984");
+  assert.equal(hits[0].slug, "s:70296");
+  assert.equal(hits[0].type, "Series");
+  assert.equal(hits[1].slug, "b:744463");
+  assert.equal(hits[1].alt, "Джордж Оруэлл");
+  assert.equal(hits[1].cover, "https://flibusta.is/i/63/744463/cover.jpg");
+  assert.equal(hits[0].cover, "");
+
+  const info = await core.info("https://flibusta.site/b/744463");
+  assert.equal(info.title, "1984");
+  assert.equal(info.alt, "1984 - ru (версии)");
+  assert.equal(info.slug, "s:70296");
+  assert.equal(info.branches[0].id, "744463");
+  assert.match(info.branches[0].name, /Соколов/);
+  assert.match(info.branches[1].name, /Голышев/);
+  assert.equal(info.cover, "https://flibusta.is/i/63/744463/cover.jpg");
+  assert.match(info.summary, /Коротко о книге/);
+
+  const job = { done: 0, total: 0, msg: "" };
+  const result = await core.build(job, {
+    slug: info.slug,
+    title: info.title,
+    branch: "744463",
+    team: info.branches[0].name,
+    volumes: ["1"],
+  });
+  assert.equal(job.done, 1);
+  assert.equal(result.filename, "1984 — Соколов.epub");
+  assert.equal(result.bytes, epub);
 });
