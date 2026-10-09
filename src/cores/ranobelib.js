@@ -1,6 +1,6 @@
 import { Core, CoreError } from "./base.js";
 import { EpubBook, EpubHtml, writeEpub } from "./epub.js";
-import { HttpClient, sleep } from "./http.js";
+import { DOWNLOADS, HttpClient, pipeline, sleep } from "./http.js";
 import {
   attachmentMap,
   buildInfo,
@@ -128,64 +128,73 @@ export class RanobeLib extends Core {
     const groups = new Map();
     const pages = [];
     const counter = { n: 0 };
-    for (const chapter of chapters) {
-      const volume = chapter.volume;
-      const number = chapter.number;
-      const name = chapter.name || "";
-      const branches = chapter.branches || [];
-      if (!branches.length) continue;
-      const branch = branches.find((item) => sameBranch(item.branch_id, branchId)) || branches[0];
-      job.msg = `Том ${volume}, глава ${number}`;
-      const response = await this.http.get(`${API}/${slug}/chapter`, {
-        params: { volume, number, branch_id: branch.branch_id },
-      });
-      const payload = response ? response.json().data || {} : {};
-      let content = payload.content;
-      if (content && typeof content === "object") {
-        content = pmHtml(content, attachmentMap(payload.attachments, "https://ranobelib.me"));
-      }
-      if (!content) {
+    await pipeline(
+      DOWNLOADS,
+      chapters,
+      async (chapter) => {
+        const volume = chapter.volume;
+        const number = chapter.number;
+        const name = chapter.name || "";
+        const branches = chapter.branches || [];
+        if (!branches.length) return null;
+        const branch = branches.find((item) => sameBranch(item.branch_id, branchId)) || branches[0];
+        job.msg = `Том ${volume}, глава ${number}`;
+        const response = await this.http.get(`${API}/${slug}/chapter`, {
+          params: { volume, number, branch_id: branch.branch_id },
+        });
+        const payload = response ? response.json().data || {} : {};
+        let content = payload.content;
+        if (content && typeof content === "object") {
+          content = pmHtml(content, attachmentMap(payload.attachments, "https://ranobelib.me"));
+        }
+        if (!content) {
+          job.done += 1;
+          if (this.chapterPause) await sleep(this.chapterPause);
+          return null;
+        }
+        const html = await tidy(content, book, counter, (url) => this.http.get(url));
         job.done += 1;
         if (this.chapterPause) await sleep(this.chapterPause);
-        continue;
-      }
-      const sub = name ? `<br/>${escapeHtml(name)}` : "";
-      const head = `<h2 class="ch">Глава ${number}${sub}</h2>`;
-      const chapterTitle = `Глава ${number}${name ? `: ${name}` : ""}`;
-      const parts = splitMarkers(await tidy(content, book, counter, (url) => this.http.get(url)));
-      let first = null;
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i];
-        let page;
-        if (i % 2) {
-          page = new EpubHtml({
-            title: "Иллюстрация",
-            fileName: chapterFile(volume, number, i),
-            lang: "ru",
-          });
-          const imageUrl = String(part || "");
-          const imageName = imageUrl.split("/").pop() || "image";
-          page.content = `<div class="pic"><img src="${imageUrl}" alt="${imageName}"/></div>`;
-        } else {
-          if (i && !hasText(part)) continue;
-          page = new EpubHtml({
-            title: chapterTitle,
-            fileName: chapterFile(volume, number, i),
-            lang: "ru",
-          });
-          page.content = `${i ? "" : head}<div class="txt">${part}</div>`;
+        return { volume, number, name, html };
+      },
+      async (ready) => {
+        if (!ready) return;
+        const sub = ready.name ? `<br/>${escapeHtml(ready.name)}` : "";
+        const head = `<h2 class="ch">Глава ${ready.number}${sub}</h2>`;
+        const chapterTitle = `Глава ${ready.number}${ready.name ? `: ${ready.name}` : ""}`;
+        const parts = splitMarkers(ready.html);
+        let first = null;
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          let page;
+          if (i % 2) {
+            page = new EpubHtml({
+              title: "Иллюстрация",
+              fileName: chapterFile(ready.volume, ready.number, i),
+              lang: "ru",
+            });
+            const imageUrl = String(part || "");
+            const imageName = imageUrl.split("/").pop() || "image";
+            page.content = `<div class="pic"><img src="${imageUrl}" alt="${imageName}"/></div>`;
+          } else {
+            if (i && !hasText(part)) continue;
+            page = new EpubHtml({
+              title: chapterTitle,
+              fileName: chapterFile(ready.volume, ready.number, i),
+              lang: "ru",
+            });
+            page.content = `${i ? "" : head}<div class="txt">${part}</div>`;
+          }
+          page.addItem(css);
+          book.addItem(page);
+          pages.push(page);
+          if (!i) first = page;
         }
-        page.addItem(css);
-        book.addItem(page);
-        pages.push(page);
-        if (!i) first = page;
-      }
-      const list = groups.get(volume) || [];
-      list.push(first);
-      groups.set(volume, list);
-      job.done += 1;
-      if (this.chapterPause) await sleep(this.chapterPause);
-    }
+        const list = groups.get(ready.volume) || [];
+        list.push(first);
+        groups.set(ready.volume, list);
+      },
+    );
 
     if (!groups.size) throw new Error("No chapter text could be retrieved.");
     const starts = [...groups.values()].flat();

@@ -1,6 +1,6 @@
 import { parse } from "node-html-parser";
-import { EpubItem } from "./epub.js";
-import { pool } from "./http.js";
+import { EpubHtml, EpubItem } from "./epub.js";
+import { DOWNLOADS, pool } from "./http.js";
 
 // Relative units, no forced colours or fonts: readers keep their own theme, font and night mode.
 export const CSS = `
@@ -178,6 +178,59 @@ export function stylesheet() {
   return new EpubItem({ uid: "css", fileName: "style.css", mediaType: "text/css", content: CSS });
 }
 
+const IMAGE_EXT = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
+
+export async function fetchImages(job, shots, label, load) {
+  let ready = 0;
+  const total = shots.length;
+  return pool(DOWNLOADS, shots, async (shot) => {
+    const image = await load(shot);
+    ready += 1;
+    if (total) job.msg = `${label} · ${ready}/${total}`;
+    const type = (image?.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+    if (!image || !type.startsWith("image/")) return null;
+    return { bytes: image.bytes, ext: IMAGE_EXT[type] || "jpg" };
+  });
+}
+
+export function appendPictures(book, pages, groups, counter, css, volume, fileKey, chapterTitle, downloaded) {
+  let first = null;
+  for (let i = 0; i < downloaded.length; i++) {
+    const image = downloaded[i];
+    if (!image) continue;
+    counter.n += 1;
+    const fileName = `img_${counter.n}.${image.ext}`;
+    book.addItem(
+      new EpubItem({
+        uid: `img${counter.n}`,
+        fileName: `images/${fileName}`,
+        mediaType: `image/${image.ext === "jpg" ? "jpeg" : image.ext}`,
+        content: image.bytes,
+      }),
+    );
+    const page = new EpubHtml({
+      title: i ? "Страница" : chapterTitle,
+      fileName: chapterFile(volume, fileKey, i),
+      lang: "ru",
+    });
+    page.content = `<div class="pic"><img src="images/${fileName}" alt="${fileName}"/></div>`;
+    page.addItem(css);
+    book.addItem(page);
+    pages.push(page);
+    if (!first) first = page;
+  }
+  if (first) {
+    const list = groups.get(volume) || [];
+    list.push(first);
+    groups.set(volume, list);
+  }
+}
+
 export function hasText(fragment) {
   return parse(fragment || "").text.trim().length > 0;
 }
@@ -218,7 +271,7 @@ export async function tidy(raw, book, counter, fetch) {
     }
   }
   const images = [...root.querySelectorAll("img")];
-  const fetched = await pool(6, images, async (img) => {
+  const fetched = await pool(DOWNLOADS, images, async (img) => {
     let url = img.getAttribute("src") || img.getAttribute("data-src");
     if (url && url.startsWith("//")) url = `https:${url}`;
     const response = url ? await fetch(url) : null;

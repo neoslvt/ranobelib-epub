@@ -1,11 +1,12 @@
 import { parse } from "node-html-parser";
 import { Core, CoreError } from "./base.js";
-import { EpubBook, EpubHtml, EpubItem, writeEpub } from "./epub.js";
-import { HttpClient, pool, sleep } from "./http.js";
+import { EpubBook, EpubHtml, writeEpub } from "./epub.js";
+import { CHAPTERS, HttpClient, pipeline, sleep } from "./http.js";
 import {
-  chapterFile,
+  appendPictures,
   epubName,
   escapeHtml,
+  fetchImages,
   fnum,
   sameBranch,
   stylesheet,
@@ -14,13 +15,6 @@ import {
 } from "./kit.js";
 
 const SITE = "https://mangahub.ru";
-
-const IMAGE_EXT = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "image/gif": "gif",
-};
 
 function text(node) {
   return String(node?.text || "")
@@ -235,7 +229,6 @@ export class MangaHub extends Core {
     this.http.jar.set("confirm_age", "1");
     this.cache = new Map();
     this.chapterPause = 0;
-    this.imageSlots = 6;
   }
 
   extractSlug(value) {
@@ -401,60 +394,34 @@ export class MangaHub extends Core {
     const groups = new Map();
     const pages = [];
     const counter = { n: 0 };
-    for (const chapter of chapters) {
-      const volume = chapter.volume;
-      const number = chapter.number;
-      const name = chapter.name || "";
-      const branches = chapter.branches || [];
-      if (!branches.length) continue;
-      if (!branches.some((item) => sameBranch(item.branch_id, branchId))) continue;
-      job.msg = `Том ${volume}, глава ${number}`;
-      const html = await this.readChapter(`${SITE}/read/${chapter.id}`);
-      const shots = pageUrls(html);
-      const chapterTitle = `Глава ${number}${name ? `: ${name}` : ""}`;
-      let ready = 0;
-      const downloaded = await pool(this.imageSlots, shots, async (shot) => {
-        const image = await this.http.get(shot);
-        ready += 1;
-        job.msg = `Том ${volume}, глава ${number} · ${ready}/${shots.length}`;
-        const type = (image?.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
-        if (!image || !type.startsWith("image/")) return null;
-        return { bytes: image.bytes, ext: IMAGE_EXT[type] || "jpg" };
-      });
-      let first = null;
-      for (let i = 0; i < downloaded.length; i++) {
-        const image = downloaded[i];
-        if (!image) continue;
-        counter.n += 1;
-        const fileName = `img_${counter.n}.${image.ext}`;
-        const fileNamePath = `images/${fileName}`;
-        book.addItem(
-          new EpubItem({
-            uid: `img${counter.n}`,
-            fileName: fileNamePath,
-            mediaType: `image/${image.ext === "jpg" ? "jpeg" : image.ext}`,
-            content: image.bytes,
-          }),
-        );
-        const page = new EpubHtml({
-          title: i ? "Страница" : chapterTitle,
-          fileName: chapterFile(volume, number, i),
-          lang: "ru",
-        });
-        page.content = `<div class="pic"><img src="images/${fileName}" alt="${fileName}"/></div>`;
-        page.addItem(css);
-        book.addItem(page);
-        pages.push(page);
-        if (!first) first = page;
-      }
-      if (first) {
-        const list = groups.get(volume) || [];
-        list.push(first);
-        groups.set(volume, list);
-      }
-      job.done += 1;
-      if (this.chapterPause) await sleep(this.chapterPause);
-    }
+    await pipeline(
+      CHAPTERS,
+      chapters,
+      async (chapter) => {
+        const volume = chapter.volume;
+        const number = chapter.number;
+        const name = chapter.name || "";
+        const branches = chapter.branches || [];
+        if (!branches.length) return null;
+        if (!branches.some((item) => sameBranch(item.branch_id, branchId))) return null;
+        const label = `Том ${volume}, глава ${number}`;
+        job.msg = label;
+        const html = await this.readChapter(`${SITE}/read/${chapter.id}`);
+        const downloaded = await fetchImages(job, pageUrls(html), label, (shot) => this.http.get(shot));
+        job.done += 1;
+        if (this.chapterPause) await sleep(this.chapterPause);
+        return {
+          volume,
+          number,
+          title: `Глава ${number}${name ? `: ${name}` : ""}`,
+          downloaded,
+        };
+      },
+      async (ready) => {
+        if (!ready) return;
+        appendPictures(book, pages, groups, counter, css, ready.volume, ready.number, ready.title, ready.downloaded);
+      },
+    );
 
     if (!groups.size) throw new Error("No chapter pages could be retrieved.");
     const starts = [...groups.values()].flat();

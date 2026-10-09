@@ -1,11 +1,12 @@
 import { Core, CoreError } from "./base.js";
-import { EpubBook, EpubHtml, EpubItem, writeEpub } from "./epub.js";
-import { HttpClient, pool, sleep } from "./http.js";
+import { EpubBook, EpubHtml, writeEpub } from "./epub.js";
+import { CHAPTERS, HttpClient, pipeline, sleep } from "./http.js";
 import {
+  appendPictures,
   buildInfo,
-  chapterFile,
   epubName,
   escapeHtml,
+  fetchImages,
   fnum,
   mapHit,
   sameBranch,
@@ -47,13 +48,6 @@ const INFO_FIELDS = [
   "format",
 ];
 
-const IMAGE_EXT = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "image/gif": "gif",
-};
-
 function chapterLocked(payload) {
   if (payload?.bundle && payload.bundle.is_open === false) return true;
   if (payload?.restricted_view && payload.restricted_view.is_open === false) return true;
@@ -79,8 +73,8 @@ export class MangaLib extends Core {
     });
     this.cache = new Map();
     this.imageRootUrl = "";
+    this.imageRootTask = null;
     this.chapterPause = 0;
-    this.imageSlots = 6;
   }
 
   extractSlug(value) {
@@ -88,8 +82,17 @@ export class MangaLib extends Core {
     return match ? match[1] : String(value || "").trim().replace(/^\/+|\/+$/g, "");
   }
 
-  async imageRoot() {
-    if (this.imageRootUrl) return this.imageRootUrl;
+  imageRoot() {
+    if (this.imageRootUrl) return Promise.resolve(this.imageRootUrl);
+    if (!this.imageRootTask) {
+      this.imageRootTask = this.loadImageRoot().finally(() => {
+        this.imageRootTask = null;
+      });
+    }
+    return this.imageRootTask;
+  }
+
+  async loadImageRoot() {
     let root = "https://img3.cdnlibs.org";
     const response = await this.http.get("https://api.cdnlibs.org/api/constants", {
       params: { "fields[]": ["imageServers"] },
@@ -180,66 +183,42 @@ export class MangaLib extends Core {
     const counter = { n: 0 };
     let tried = 0;
     let locked = 0;
-    for (const chapter of chapters) {
-      const volume = chapter.volume;
-      const number = chapter.number;
-      const name = chapter.name || "";
-      const branches = chapter.branches || [];
-      if (!branches.length) continue;
-      tried += 1;
-      const branch = branches.find((item) => sameBranch(item.branch_id, branchId)) || branches[0];
-      job.msg = `Том ${volume}, глава ${number}`;
-      const response = await this.http.get(`${API}/${slug}/chapter`, {
-        params: { volume, number, branch_id: branch.branch_id },
-      });
-      const payload = response ? response.json().data || {} : {};
-      const shots = [...(payload.pages || [])].sort((a, b) => fnum(a.slug) - fnum(b.slug));
-      if (!shots.length && chapterLocked(payload)) locked += 1;
-      const chapterTitle = `Глава ${number}${name ? `: ${name}` : ""}`;
-      let ready = 0;
-      const downloaded = await pool(this.imageSlots, shots, async (shot) => {
-        const image = await this.http.get(await this.pageUrl(shot?.url));
-        ready += 1;
-        job.msg = `Том ${volume}, глава ${number} · ${ready}/${shots.length}`;
-        const type = (image?.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
-        if (!image || !type.startsWith("image/")) return null;
-        return { bytes: image.bytes, ext: IMAGE_EXT[type] || "jpg" };
-      });
-      let first = null;
-      for (let i = 0; i < downloaded.length; i++) {
-        const image = downloaded[i];
-        if (!image) continue;
-        counter.n += 1;
-        const fileName = `img_${counter.n}.${image.ext}`;
-        const fileNamePath = `images/${fileName}`;
-        book.addItem(
-          new EpubItem({
-            uid: `img${counter.n}`,
-            fileName: fileNamePath,
-            mediaType: `image/${image.ext === "jpg" ? "jpeg" : image.ext}`,
-            content: image.bytes,
-          }),
-        );
-        const page = new EpubHtml({
-          title: i ? "Страница" : chapterTitle,
-          fileName: chapterFile(volume, number, i),
-          lang: "ru",
+    await pipeline(
+      CHAPTERS,
+      chapters,
+      async (chapter) => {
+        const volume = chapter.volume;
+        const number = chapter.number;
+        const name = chapter.name || "";
+        const branches = chapter.branches || [];
+        if (!branches.length) return null;
+        tried += 1;
+        const branch = branches.find((item) => sameBranch(item.branch_id, branchId)) || branches[0];
+        const label = `Том ${volume}, глава ${number}`;
+        job.msg = label;
+        const response = await this.http.get(`${API}/${slug}/chapter`, {
+          params: { volume, number, branch_id: branch.branch_id },
         });
-        
-        page.content = `<div class="pic"><img src="images/${fileName}" alt="${fileName}"/></div>`;
-        page.addItem(css);
-        book.addItem(page);
-        pages.push(page);
-        if (!first) first = page;
-      }
-      if (first) {
-        const list = groups.get(volume) || [];
-        list.push(first);
-        groups.set(volume, list);
-      }
-      job.done += 1;
-      if (this.chapterPause) await sleep(this.chapterPause);
-    }
+        const payload = response ? response.json().data || {} : {};
+        const shots = [...(payload.pages || [])].sort((a, b) => fnum(a.slug) - fnum(b.slug));
+        if (!shots.length && chapterLocked(payload)) locked += 1;
+        const downloaded = await fetchImages(job, shots, label, async (shot) =>
+          this.http.get(await this.pageUrl(shot?.url)),
+        );
+        job.done += 1;
+        if (this.chapterPause) await sleep(this.chapterPause);
+        return {
+          volume,
+          number,
+          title: `Глава ${number}${name ? `: ${name}` : ""}`,
+          downloaded,
+        };
+      },
+      async (ready) => {
+        if (!ready) return;
+        appendPictures(book, pages, groups, counter, css, ready.volume, ready.number, ready.title, ready.downloaded);
+      },
+    );
 
     if (!groups.size) {
       if (locked && locked === tried) {

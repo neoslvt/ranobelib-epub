@@ -2,6 +2,75 @@ export function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// How many responses may be in flight at once, on desktop and on Android.
+// OkHttp's per-host cap matches this. A higher cap needs a new APK.
+export const DOWNLOADS = 64;
+// Chapters overlap so the next chapter's pages start before the previous one finishes.
+export const CHAPTERS = 16;
+
+let activeDownloads = 0;
+const downloadQueue = [];
+
+function takeSlot() {
+  if (activeDownloads < DOWNLOADS) {
+    activeDownloads += 1;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => downloadQueue.push(resolve));
+}
+
+function giveSlot() {
+  const next = downloadQueue.shift();
+  if (next) next();
+  else activeDownloads -= 1;
+}
+
+async function withSlot(run) {
+  await takeSlot();
+  try {
+    return await run();
+  } finally {
+    giveSlot();
+  }
+}
+
+// Like pool, but `consume` runs in input order as soon as that item is ready,
+// while later items keep downloading.
+export async function pipeline(limit, items, worker, consume) {
+  const list = [...items];
+  if (!list.length) return;
+  const results = new Array(list.length);
+  const ready = new Array(list.length).fill(false);
+  let next = 0;
+  let cursor = 0;
+  let chain = Promise.resolve();
+
+  function schedule() {
+    chain = chain.then(async () => {
+      while (cursor < list.length && ready[cursor]) {
+        const index = cursor;
+        cursor += 1;
+        await consume(results[index], index);
+      }
+    });
+    return chain;
+  }
+
+  const runners = Math.max(1, Math.min(limit || 1, list.length));
+  await Promise.all(
+    Array.from({ length: runners }, async () => {
+      while (next < list.length) {
+        const index = next;
+        next += 1;
+        results[index] = await worker(list[index], index);
+        ready[index] = true;
+        await schedule();
+      }
+    }),
+  );
+  await chain;
+}
+
 // Runs `worker` on each item with at most `limit` calls in flight. Results stay in input order.
 export async function pool(limit, items, worker) {
   const list = [...items];
@@ -248,7 +317,7 @@ async function exchange(url, options = {}) {
 export async function retryGet(url, { headers, params, timeout = 20000, attempts = 3, jar } = {}) {
   const target = withParams(url, params);
   for (let i = 0; i < attempts; i++) {
-    const response = await exchange(target, { headers, timeout, jar });
+    const response = await withSlot(() => exchange(target, { headers, timeout, jar }));
     if (response?.status === 200) return response;
     if (i < attempts - 1) await sleep(1000 * (i + 1));
   }
@@ -271,10 +340,12 @@ export class HttpClient {
 
   // One attempt, including redirects the caller wants to see. Used for form posts.
   send(url, options = {}) {
-    return exchange(withParams(url, options.params), {
-      ...options,
-      headers: applyJar({ ...this.headers, ...options.headers }, this.jar),
-      jar: this.jar,
-    });
+    return withSlot(() =>
+      exchange(withParams(url, options.params), {
+        ...options,
+        headers: applyJar({ ...this.headers, ...options.headers }, this.jar),
+        jar: this.jar,
+      }),
+    );
   }
 }
