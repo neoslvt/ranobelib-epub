@@ -44,6 +44,7 @@ npm start
 | RanobeLib | ✅ | ✅ | ✅ |
 | MangaHub | ✅ | ✅ | ✅ |
 | Yamiko | ✅ | ✅ | ✅ |
+| Flibusta | ✅ | ✅ | ✅ |
 
 ## Структура проекта
 
